@@ -3,9 +3,9 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace TouchDown.MVVM.ViewModels;
+namespace TD.MVVM.ViewModels;
 
-public abstract partial class TDValidatorVM : ObservableValidator, ITDVM
+public abstract partial class ValidatorVM : ObservableValidator, IVM
 {
     public virtual async Task OnInitializedAsync()
         => await Loaded().ConfigureAwait(true);

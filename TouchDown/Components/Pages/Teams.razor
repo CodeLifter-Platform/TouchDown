@@ -1,9 +1,10 @@
 @page "/teams"
-@using TouchDown.Data
-@using Microsoft.EntityFrameworkCore
+@using TD.MVVM.Components
+@using TD.ViewModels
+@inherits ViewComponentBase<TeamsVM>
 @rendermode InteractiveServer
 
-<PageTitle>TouchDown - Teams</PageTitle>
+<PageTitle>TD - Teams</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium">
     <MudText Typo="Typo.h5" Class="mb-1">Agent Teams</MudText>
@@ -12,7 +13,7 @@
     </MudText>
 
     <MudStack Spacing="4">
-        @foreach (var team in teams)
+        @foreach (var team in VM.Teams)
         {
             <MudExpansionPanels Elevation="0" Dense="true">
                 <MudExpansionPanel Style="background: var(--mud-palette-surface);">
@@ -51,7 +52,7 @@
                                             </div>
                                         </td>
                                         <td>
-                                            <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(member.Role)" Variant="Variant.Outlined">
+                                            <MudChip T="string" Size="Size.Small" Color="@TeamsVM.GetRoleColor(member.Role)" Variant="Variant.Outlined">
                                                 @member.Role
                                             </MudChip>
                                         </td>
@@ -77,28 +78,3 @@
         }
     </MudStack>
 </MudContainer>
-
-@code {
-    [Inject] private IDbContextFactory<TouchDownDbContext> DbFactory { get; set; } = null!;
-
-    private List<AgentTeam> teams = [];
-
-    protected override async Task OnInitializedAsync()
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        teams = await db.AgentTeams
-            .Include(t => t.Members)
-            .Include(t => t.CommunicationRules)
-            .ToListAsync();
-    }
-
-    private static Color GetRoleColor(AgentRole role) => role switch
-    {
-        AgentRole.Leader => Color.Primary,
-        AgentRole.Worker => Color.Info,
-        AgentRole.Validator => Color.Success,
-        AgentRole.Tester => Color.Secondary,
-        AgentRole.DevOps => Color.Warning,
-        _ => Color.Default
-    };
-}

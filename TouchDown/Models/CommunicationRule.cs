@@ -1,4 +1,4 @@
-namespace TouchDown.Models;
+namespace TD.Models;
 
 public enum CommStyle
 {

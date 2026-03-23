@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace TouchDown.Models;
+namespace TD.Models;
 
 public enum DriveStatus
 {

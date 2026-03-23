@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
-using TouchDown.Models;
+using TD.Models;
 
-namespace TouchDown.Data;
+namespace TD.Data;
 
-public class TouchDownDbContext : DbContext
+public class TDDbContext : DbContext
 {
-    public TouchDownDbContext(DbContextOptions<TouchDownDbContext> options) : base(options) { }
+    public TDDbContext(DbContextOptions<TDDbContext> options) : base(options) { }
 
     public DbSet<AgentTeam> AgentTeams => Set<AgentTeam>();
     public DbSet<AgentMember> AgentMembers => Set<AgentMember>();
@@ -45,7 +45,7 @@ public class TouchDownDbContext : DbContext
         });
 
         // Seed the default Playbook team
-        var team = new { Id = 1, Name = "The Playbook", Description = "The default TouchDown agent team.", IsDefault = true };
+        var team = new { Id = 1, Name = "The Playbook", Description = "The default TD agent team.", IsDefault = true };
         modelBuilder.Entity<AgentTeam>().HasData(team);
 
         modelBuilder.Entity<AgentMember>().HasData(

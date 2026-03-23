@@ -1,9 +1,9 @@
 ﻿using System;
 using System.ComponentModel;
 
-namespace TouchDown.MVVM.ViewModels;
+namespace TD.MVVM.ViewModels;
 
-public interface ITDVM : INotifyPropertyChanged
+public interface IVM : INotifyPropertyChanged
 {
     Task OnInitializedAsync();
     Task Loaded();

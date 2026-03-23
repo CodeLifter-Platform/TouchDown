@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 public record ClaudeHealthStatus
 {

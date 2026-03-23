@@ -1,11 +1,11 @@
 ﻿using System;
-using TouchDown.MVVM.ViewModels;
+using TD.MVVM.ViewModels;
 
-namespace TouchDown.MVVM.Components;
+namespace TD.MVVM.Components;
 
 // differentiate View (Page) from ViewModel for MvvmNavigationManager auto-detection
 public interface IView<out TViewModel> : IView
-    where TViewModel : ITDVM
+    where TViewModel : IVM
 {
     // Skip
 }

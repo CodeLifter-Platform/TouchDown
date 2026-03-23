@@ -2,11 +2,11 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using TouchDown.Data;
-using TouchDown.Hubs;
-using TouchDown.Models;
+using TD.Data;
+using TD.Hubs;
+using TD.Models;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 public interface IAgentOrchestrationService
 {
@@ -18,7 +18,7 @@ public interface IAgentOrchestrationService
 
 public class AgentOrchestrationService : IAgentOrchestrationService
 {
-    private readonly IDbContextFactory<TouchDownDbContext> _dbFactory;
+    private readonly IDbContextFactory<TDDbContext> _dbFactory;
     private readonly IClaudeStreamingService _claude;
     private readonly IGitWorktreeService _git;
     private readonly ISharedDriveContext _context;
@@ -28,7 +28,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeDrives = new();
 
     public AgentOrchestrationService(
-        IDbContextFactory<TouchDownDbContext> dbFactory,
+        IDbContextFactory<TDDbContext> dbFactory,
         IClaudeStreamingService claude,
         IGitWorktreeService git,
         ISharedDriveContext context,

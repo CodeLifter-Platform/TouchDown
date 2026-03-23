@@ -1,10 +1,10 @@
 ﻿using System;
-using TouchDown.MVVM.ViewModels;
+using TD.MVVM.ViewModels;
 using Microsoft.AspNetCore.Components;
 
-namespace TouchDown.MVVM.Components
+namespace TD.MVVM.Components
 {
-	public class TDParameterBoundComponentBase<TViewModel> : ComponentBase, IView<TViewModel> where TViewModel : ITDVM
+	public class ParameterBoundComponentBase<TViewModel> : ComponentBase, IView<TViewModel> where TViewModel : IVM
     {
         [Parameter]
         public TViewModel VM { get; set; } = default!;

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
-using TouchDown.Models;
+using TD.Models;
 
-namespace TouchDown.Hubs;
+namespace TD.Hubs;
 
 public class AgentHub : Hub
 {

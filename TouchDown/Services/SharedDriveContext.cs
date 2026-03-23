@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 /// <summary>
 /// Manages shared context between agents within a single Drive.

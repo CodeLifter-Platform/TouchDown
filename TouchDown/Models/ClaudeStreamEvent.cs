@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace TouchDown.Models;
+namespace TD.Models;
 
 /// <summary>
 /// Represents events from claude --output-format stream-json.

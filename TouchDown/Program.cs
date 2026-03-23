@@ -3,10 +3,10 @@ using Hangfire.MemoryStorage;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
 using MudBlazor.Services;
-using TouchDown.Components;
-using TouchDown.Data;
-using TouchDown.Hubs;
-using TouchDown.Services;
+using TD.Components;
+using TD.Data;
+using TD.Hubs;
+using TD.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,7 +24,7 @@ builder.Services.AddMudServices(config =>
 builder.Services.AddSignalR();
 
 // EF Core with IDbContextFactory pattern
-builder.Services.AddDbContextFactory<TouchDownDbContext>(options =>
+builder.Services.AddDbContextFactory<TDDbContext>(options =>
     options.UseSqlite("Data Source=touchdown.db"));
 
 // Hangfire
@@ -37,6 +37,13 @@ builder.Services.AddSingleton<ClaudeHealthCheck>();
 builder.Services.AddSingleton<IClaudeHealthCheck>(sp => sp.GetRequiredService<ClaudeHealthCheck>());
 builder.Services.AddHealthChecks()
     .AddCheck<ClaudeHealthCheck>("claude-code");
+
+// ViewModels (transient — each component gets its own instance)
+builder.Services.AddTransient<TD.ViewModels.HomeVM>();
+builder.Services.AddTransient<TD.ViewModels.DriveWizardVM>();
+builder.Services.AddTransient<TD.ViewModels.TeamsVM>();
+builder.Services.AddTransient<TD.ViewModels.DriveMonitorVM>();
+builder.Services.AddTransient<TD.ViewModels.HuddleVM>();
 
 // Application services
 builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>();
@@ -51,7 +58,7 @@ var app = builder.Build();
 // Ensure database is created with seed data
 using (var scope = app.Services.CreateScope())
 {
-    var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TouchDownDbContext>>();
+    var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TDDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
     await db.Database.EnsureCreatedAsync();
 }

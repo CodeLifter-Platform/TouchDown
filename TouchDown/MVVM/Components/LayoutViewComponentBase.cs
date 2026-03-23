@@ -1,11 +1,11 @@
 ﻿using System;
-using TouchDown.MVVM.ViewModels;
+using TD.MVVM.ViewModels;
 using Microsoft.AspNetCore.Components;
 
-namespace TouchDown.MVVM.Components;
+namespace TD.MVVM.Components;
 
-public abstract class TDLayoutComponentBase<TViewModel>
-    : LayoutComponentBase, IView<TViewModel> where TViewModel : ITDVM
+public abstract class LayoutViewComponentBase<TViewModel>
+    : LayoutComponentBase, IView<TViewModel> where TViewModel : IVM
 {
     [Inject]
     protected TViewModel? VM { get; set; }

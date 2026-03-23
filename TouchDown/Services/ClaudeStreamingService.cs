@@ -2,9 +2,9 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using TouchDown.Models;
+using TD.Models;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 public class ClaudeStreamingService : IClaudeStreamingService
 {

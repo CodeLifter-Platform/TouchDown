@@ -4,9 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 
-namespace TouchDown.MVVM.ViewModels;
+namespace TD.MVVM.ViewModels;
 
-public abstract partial class TDRecipientVM : ObservableRecipient, ITDVM
+public abstract partial class RecipientVM : ObservableRecipient, IVM
 {
     public virtual async Task OnInitializedAsync()
     {
@@ -20,7 +20,7 @@ public abstract partial class TDRecipientVM : ObservableRecipient, ITDVM
         => await Task.CompletedTask.ConfigureAwait(false);
 }
 
-public abstract partial class TDRecipientVM<TMessage> : TDRecipientVM, IRecipient<TMessage>
+public abstract partial class RecipientVM<TMessage> : RecipientVM, IRecipient<TMessage>
     where TMessage : class
 {
     public abstract void Receive(TMessage message);

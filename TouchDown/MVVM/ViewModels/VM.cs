@@ -4,9 +4,9 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
-namespace TouchDown.MVVM.ViewModels;
+namespace TD.MVVM.ViewModels;
 
-public abstract partial class TDVM : ObservableObject, ITDVM
+public abstract partial class VM : ObservableObject, IVM
 {
     public virtual async Task OnInitializedAsync()
 => await Loaded().ConfigureAwait(true);

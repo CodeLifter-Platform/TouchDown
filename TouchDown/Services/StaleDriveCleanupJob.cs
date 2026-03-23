@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using TouchDown.Data;
-using TouchDown.Models;
+using TD.Data;
+using TD.Models;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 /// <summary>
 /// Hangfire recurring job that marks drives as Turnover if they've been InProgress
@@ -10,12 +10,12 @@ namespace TouchDown.Services;
 /// </summary>
 public class StaleDriveCleanupJob
 {
-    private readonly IDbContextFactory<TouchDownDbContext> _dbFactory;
+    private readonly IDbContextFactory<TDDbContext> _dbFactory;
     private readonly ILogger<StaleDriveCleanupJob> _logger;
     private readonly TimeSpan _timeout = TimeSpan.FromMinutes(30);
 
     public StaleDriveCleanupJob(
-        IDbContextFactory<TouchDownDbContext> dbFactory,
+        IDbContextFactory<TDDbContext> dbFactory,
         ILogger<StaleDriveCleanupJob> logger)
     {
         _dbFactory = dbFactory;

@@ -1,6 +1,6 @@
-using TouchDown.Models;
+using TD.Models;
 
-namespace TouchDown.Services;
+namespace TD.Services;
 
 public record ClaudeRunOptions
 {

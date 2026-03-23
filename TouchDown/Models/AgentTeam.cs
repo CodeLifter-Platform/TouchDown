@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace TouchDown.Models;
+namespace TD.Models;
 
 public class AgentTeam
 {
@@ -22,7 +22,7 @@ public class AgentTeam
     public static AgentTeam CreateThePlaybook() => new()
     {
         Name = "The Playbook",
-        Description = "The default TouchDown agent team. The Quarterback calls plays, Guards implement, Safety reviews, Scout tests, Special Teams handles DevOps.",
+        Description = "The default TD agent team. The Quarterback calls plays, Guards implement, Safety reviews, Scout tests, Special Teams handles DevOps.",
         IsDefault = true,
         Members =
         [

@@ -1,4 +1,4 @@
-@using TouchDown.Data
+@using TD.Data
 @using Microsoft.EntityFrameworkCore
 
 <MudText Typo="Typo.h6" Class="mb-1">Build Your Roster</MudText>
@@ -104,7 +104,7 @@
 @code {
     [Parameter] public AgentSession Session { get; set; } = null!;
     [Parameter] public EventCallback OnChanged { get; set; }
-    [Inject] private IDbContextFactory<TouchDownDbContext> DbFactory { get; set; } = null!;
+    [Inject] private IDbContextFactory<TDDbContext> DbFactory { get; set; } = null!;
 
     private List<AgentTeam> availableTeams = [];
     private bool showCustomBuilder;
