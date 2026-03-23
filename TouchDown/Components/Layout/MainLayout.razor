@@ -1,0 +1,71 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider IsDarkMode="true" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="0" Dense="true" Class="td-appbar">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@ToggleDrawer" />
+        <MudText Typo="Typo.h6" Class="td-logo">TouchDown</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Inherit" Href="/new-drive" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Mini"
+               OpenMiniOnHover="true">
+        <MudNavMenu>
+            <MudNavLink Href="/" Icon="@Icons.Material.Filled.Dashboard" Match="NavLinkMatch.All">Dashboard</MudNavLink>
+            <MudNavLink Href="/new-drive" Icon="@Icons.Material.Filled.PlayArrow">New Drive</MudNavLink>
+            <MudNavLink Href="/teams" Icon="@Icons.Material.Filled.Groups">Teams</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">X</span>
+</div>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight(),
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#f97316",
+            Secondary = "#8b5cf6",
+            Tertiary = "#3b82f6",
+            Background = "#0a0e17",
+            Surface = "#141925",
+            AppbarBackground = "#141925",
+            DrawerBackground = "#141925",
+            TextPrimary = "#e4e8f0",
+            TextSecondary = "#8891a5",
+            ActionDefault = "#8891a5",
+            Success = "#22c55e",
+            Error = "#ef4444",
+            Warning = "#eab308",
+            Info = "#3b82f6",
+            Dark = "#0a0e17",
+            LinesDefault = "#2a3040",
+            TableLines = "#2a3040",
+            Divider = "#2a3040",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Inter", "sans-serif"] }
+        }
+    };
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+}

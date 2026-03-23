@@ -1,0 +1,19 @@
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+
+namespace TouchDown.MVVM.ViewModels;
+
+public abstract partial class TDVM : ObservableObject, ITDVM
+{
+    public virtual async Task OnInitializedAsync()
+=> await Loaded().ConfigureAwait(true);
+
+    protected virtual void NotifyStateChanged() => OnPropertyChanged((string?)null);
+
+    [RelayCommand]
+    public virtual async Task Loaded()
+        => await Task.CompletedTask.ConfigureAwait(false);
+}

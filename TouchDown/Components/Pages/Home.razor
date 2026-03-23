@@ -1,0 +1,113 @@
+@page "/"
+@rendermode InteractiveServer
+
+<PageTitle>TouchDown</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium">
+    @if (healthStatus != null && !healthStatus.IsHealthy)
+    {
+        <MudAlert Severity="@(healthStatus.IsInstalled ? Severity.Warning : Severity.Error)"
+                  Variant="Variant.Filled" Class="mb-4" Dense="true"
+                  Icon="@Icons.Material.Filled.Warning">
+            @if (!healthStatus.IsInstalled)
+            {
+                <MudText Typo="Typo.body2">
+                    <strong>Claude Code CLI not found.</strong> Install it to power your agents:
+                    <MudLink Href="https://docs.anthropic.com/en/docs/claude-code" Target="_blank" Color="Color.Inherit" Underline="Underline.Always">Installation Guide</MudLink>
+                </MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">
+                    <strong>Claude Code is not authenticated.</strong> Run <code>claude auth</code> in your terminal to set up your license.
+                </MudText>
+            }
+        </MudAlert>
+    }
+    else if (healthStatus is { IsHealthy: true })
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-4" Dense="true"
+                  Icon="@Icons.Material.Filled.CheckCircle">
+            Claude Code v@(healthStatus.Version) ready at <code>@healthStatus.CliPath</code>
+        </MudAlert>
+    }
+
+    <div class="d-flex flex-column align-center my-8">
+        <MudText Typo="Typo.h2" Color="Color.Primary" GutterBottom="true" Style="font-weight: 800; letter-spacing: -1px;">
+            TouchDown
+        </MudText>
+        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">Multi-Agent AI Orchestration</MudText>
+        <MudText Typo="Typo.body1" Class="mt-2 mb-4" Align="Align.Center" Style="max-width: 500px; color: var(--mud-palette-text-secondary);">
+            Assemble your agent team, call the play, and let them drive your code to the end zone.
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Href="/new-drive"
+                   StartIcon="@Icons.Material.Filled.PlayArrow">
+            Start a New Drive
+        </MudButton>
+    </div>
+
+    <MudText Typo="Typo.h6" Class="mb-3">Recent Drives</MudText>
+
+    @if (recentDrives.Any())
+    {
+        <MudTable T="Drive" Items="@recentDrives" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+                  RowClass="cursor-pointer" OnRowClick="@(args => NavigateToDrive(args.Item))">
+            <HeaderContent>
+                <MudTh>Drive ID</MudTh>
+                <MudTh>Task</MudTh>
+                <MudTh>Team</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Created</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ID">
+                    <MudText Typo="Typo.body2" Style="font-family: monospace;" Color="Color.Primary">@context.DriveId</MudText>
+                </MudTd>
+                <MudTd DataLabel="Task">@TruncateTask(context.TaskDescription)</MudTd>
+                <MudTd DataLabel="Team">@(context.AgentTeam?.Name ?? "Unknown")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)" Variant="Variant.Outlined">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Created">@context.CreatedAt.ToString("MMM dd HH:mm")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+            No drives yet. Start your first drive to see your team in action.
+        </MudAlert>
+    }
+</MudContainer>
+
+@code {
+    [Inject] private IAgentOrchestrationService Orchestration { get; set; } = null!;
+    [Inject] private IClaudeHealthCheck HealthCheck { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private List<Drive> recentDrives = [];
+    private ClaudeHealthStatus? healthStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        healthStatus = HealthCheck.LastStatus ?? await HealthCheck.CheckAsync();
+        recentDrives = await Orchestration.GetRecentDrivesAsync();
+    }
+
+    private void NavigateToDrive(Drive? drive) { if (drive != null) Navigation.NavigateTo($"/drive/{drive.DriveId}"); }
+
+    private static string TruncateTask(string task) =>
+        task.Length > 80 ? task[..77] + "..." : task;
+
+    private static Color GetStatusColor(DriveStatus status) => status switch
+    {
+        DriveStatus.Touchdown => Color.Success,
+        DriveStatus.Turnover => Color.Error,
+        DriveStatus.InProgress => Color.Info,
+        DriveStatus.Huddle => Color.Secondary,
+        DriveStatus.Cancelled => Color.Default,
+        _ => Color.Default
+    };
+}

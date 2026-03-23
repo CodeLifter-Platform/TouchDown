@@ -1,0 +1,205 @@
+@page "/drive/{DriveId}"
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>TouchDown - Drive @DriveId</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div class="d-flex align-center gap-3">
+            <MudText Typo="Typo.h5">Drive: <span style="font-family: monospace;">@DriveId</span></MudText>
+            @if (drive != null)
+            {
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(drive.Status)" Variant="Variant.Filled">
+                    @drive.Status
+                </MudChip>
+            }
+        </div>
+        <div class="d-flex gap-2">
+            @if (drive?.Status == DriveStatus.InProgress)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelDrive"
+                           StartIcon="@Icons.Material.Filled.Stop" Size="Size.Small">
+                    Cancel
+                </MudButton>
+            }
+            <MudButton Variant="Variant.Outlined" Href="/new-drive"
+                       StartIcon="@Icons.Material.Filled.Add" Size="Size.Small">
+                New Drive
+            </MudButton>
+        </div>
+    </div>
+
+    @if (drive != null)
+    {
+        <MudGrid Class="mb-4">
+            @foreach (var status in agentStatuses)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudCard Outlined="true">
+                        <MudCardContent Class="pa-3">
+                            <div class="d-flex justify-space-between align-center mb-2">
+                                <MudText Typo="Typo.body2" Style="font-weight: 600;">@status.Key</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@GetAgentStatusColor(status.Value.Status)"
+                                         Variant="Variant.Outlined">
+                                    @status.Value.Status
+                                </MudChip>
+                            </div>
+                            <MudProgressLinear Value="@status.Value.Progress" Color="Color.Primary" Rounded="true" Size="Size.Small" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudPaper Outlined="true">
+            <MudToolBar Dense="true">
+                <MudIcon Icon="@Icons.Material.Filled.Terminal" Class="mr-2" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">Play-by-Play</MudText>
+                <MudSpacer />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@logs.Count entries</MudText>
+            </MudToolBar>
+            <MudDivider />
+            <div class="log-stream pa-2" @ref="logContainer">
+                @foreach (var log in logs)
+                {
+                    <div class="log-entry @log.Level.ToLower()">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="min-width: 70px; display: inline;">
+                            @log.Timestamp.ToString("HH:mm:ss")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Primary" Style="min-width: 130px; display: inline; font-weight: 600;">
+                            [@log.AgentName]
+                        </MudText>
+                        <MudText Typo="Typo.caption" Style="display: inline;">
+                            @log.Message
+                        </MudText>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    }
+    else
+    {
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        <MudText Class="ml-3" Typo="Typo.body2" Color="Color.Secondary">Loading drive data...</MudText>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string DriveId { get; set; } = null!;
+
+    [Inject] private IAgentOrchestrationService Orchestration { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private Drive? drive;
+    private HubConnection? hubConnection;
+    private ElementReference logContainer;
+    private Dictionary<string, AgentStatusInfo> agentStatuses = new();
+    private List<LogEntry> logs = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        drive = await Orchestration.GetDriveAsync(DriveId);
+
+        if (drive?.AgentTeam?.Members != null)
+        {
+            foreach (var member in drive.AgentTeam.Members)
+                agentStatuses[member.Name] = new AgentStatusInfo { Status = "Pending", Progress = 0 };
+        }
+
+        if (drive?.Logs != null)
+        {
+            logs.AddRange(drive.Logs.Select(l => new LogEntry
+            {
+                Timestamp = l.Timestamp,
+                AgentName = l.AgentName ?? "System",
+                Message = l.Message,
+                Level = l.Level.ToString()
+            }));
+        }
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/agentHub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<dynamic>("ReceiveLog", (log) =>
+        {
+            logs.Add(new LogEntry
+            {
+                Timestamp = DateTime.UtcNow,
+                AgentName = (string)(log.AgentName ?? "System"),
+                Message = (string)log.Message,
+                Level = (string)(log.Level ?? "Info")
+            });
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<dynamic>("AgentStatusUpdate", (update) =>
+        {
+            var name = (string)update.AgentName;
+            if (agentStatuses.ContainsKey(name))
+            {
+                agentStatuses[name] = new AgentStatusInfo
+                {
+                    Status = (string)update.Status,
+                    Progress = (int)(update.ProgressPercent ?? 0)
+                };
+            }
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<dynamic>("DriveCompleted", (result) =>
+        {
+            if (drive != null)
+            {
+                var status = (string)result.Status;
+                drive.Status = status == "Touchdown" ? DriveStatus.Touchdown : DriveStatus.Turnover;
+                drive.CompletedAt = DateTime.UtcNow;
+            }
+            InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+        await hubConnection.InvokeAsync("JoinDrive", DriveId);
+    }
+
+    private async Task CancelDrive() => await Orchestration.CancelDriveAsync(DriveId);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null) await hubConnection.DisposeAsync();
+    }
+
+    private static Color GetStatusColor(DriveStatus status) => status switch
+    {
+        DriveStatus.Touchdown => Color.Success,
+        DriveStatus.Turnover => Color.Error,
+        DriveStatus.InProgress => Color.Info,
+        DriveStatus.Huddle => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private static Color GetAgentStatusColor(string status) => status.ToLower() switch
+    {
+        "running" => Color.Info,
+        "completed" => Color.Success,
+        "failed" => Color.Error,
+        _ => Color.Default
+    };
+
+    private class AgentStatusInfo
+    {
+        public string Status { get; set; } = "Pending";
+        public int Progress { get; set; }
+    }
+
+    private class LogEntry
+    {
+        public DateTime Timestamp { get; set; }
+        public string AgentName { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string Level { get; set; } = "Info";
+    }
+}

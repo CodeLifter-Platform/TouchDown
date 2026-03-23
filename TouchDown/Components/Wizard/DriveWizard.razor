@@ -1,0 +1,69 @@
+@page "/new-drive"
+@using TouchDown.Components.Wizard.Steps
+@using TouchDown.Components.Planning
+@rendermode InteractiveServer
+
+<PageTitle>TouchDown - New Drive</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium">
+    <MudText Typo="Typo.h5" Class="mb-4">New Drive</MudText>
+
+    <MudStepper @bind-ActiveIndex="currentStep" NonLinear="true">
+        <ChildContent>
+            <MudStep Title="Source">
+                <SourceStep Session="session" OnChanged="StateHasChanged" />
+            </MudStep>
+
+            <MudStep Title="Team">
+                <TeamStep Session="session" OnChanged="StateHasChanged" />
+            </MudStep>
+
+            <MudStep Title="Task">
+                <TaskStep Session="session" OnChanged="StateHasChanged" />
+            </MudStep>
+        </ChildContent>
+
+        <ActionContent>
+            @if (currentStep == 2)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="StartHuddle"
+                           Disabled="@(!CanStartHuddle())" StartIcon="@Icons.Material.Filled.Sports"
+                           Class="ml-auto">
+                    Start the Huddle
+                </MudButton>
+            }
+        </ActionContent>
+    </MudStepper>
+</MudContainer>
+
+@if (showHuddle)
+{
+    <PlanningModal Session="session" OnClose="CloseHuddle" OnLaunch="LaunchDrive" />
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private int currentStep;
+    private AgentSession session = new();
+    private bool showHuddle;
+
+    private bool CanStartHuddle() =>
+        !string.IsNullOrWhiteSpace(session.RepoPath) &&
+        session.Team != null &&
+        !string.IsNullOrWhiteSpace(session.TaskDescription);
+
+    private void StartHuddle()
+    {
+        session.Drive = new Drive();
+        showHuddle = true;
+    }
+
+    private void CloseHuddle() => showHuddle = false;
+
+    private void LaunchDrive(string driveId)
+    {
+        showHuddle = false;
+        Navigation.NavigateTo($"/drive/{driveId}");
+    }
+}

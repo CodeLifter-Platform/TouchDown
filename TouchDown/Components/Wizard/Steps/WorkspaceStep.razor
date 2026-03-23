@@ -1,0 +1,58 @@
+<MudText Typo="Typo.h6" Class="mb-1">The Line of Scrimmage</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Choose how agents will work on your code. Current branch is fastest, worktrees keep your branch clean, fresh folder for greenfield work.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" sm="4">
+        <MudCard Outlined="true" Class="@($"workspace-card {(Session.WorkspaceMode == WorkspaceMode.CurrentBranch ? "mud-border-primary" : "")}")"
+                 Style="cursor: pointer; height: 100%;" @onclick="() => SetMode(WorkspaceMode.CurrentBranch)">
+            <MudCardContent Class="d-flex flex-column align-center text-center">
+                <MudIcon Icon="@Icons.Material.Filled.CallMerge" Size="Size.Large" Color="@(Session.WorkspaceMode == WorkspaceMode.CurrentBranch ? Color.Primary : Color.Default)" />
+                <MudText Typo="Typo.subtitle1" Class="mt-2">Current Branch</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Work directly on the current branch. Fast, but changes are live.</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudCard Outlined="true" Class="@($"workspace-card {(Session.WorkspaceMode == WorkspaceMode.PrWorktree ? "mud-border-primary" : "")}")"
+                 Style="cursor: pointer; height: 100%;" @onclick="() => SetMode(WorkspaceMode.PrWorktree)">
+            <MudCardContent Class="d-flex flex-column align-center text-center">
+                <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Large" Color="@(Session.WorkspaceMode == WorkspaceMode.PrWorktree ? Color.Primary : Color.Default)" />
+                <MudText Typo="Typo.subtitle1" Class="mt-2">PR Worktree</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Create an isolated git worktree. Changes stay separate until you merge.</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudCard Outlined="true" Class="@($"workspace-card {(Session.WorkspaceMode == WorkspaceMode.FreshFolder ? "mud-border-primary" : "")}")"
+                 Style="cursor: pointer; height: 100%;" @onclick="() => SetMode(WorkspaceMode.FreshFolder)">
+            <MudCardContent Class="d-flex flex-column align-center text-center">
+                <MudIcon Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Large" Color="@(Session.WorkspaceMode == WorkspaceMode.FreshFolder ? Color.Primary : Color.Default)" />
+                <MudText Typo="Typo.subtitle1" Class="mt-2">Fresh Folder</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Start fresh in a new directory. Great for greenfield projects.</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@if (Session.WorkspaceMode == WorkspaceMode.FreshFolder)
+{
+    <MudTextField @bind-Value="Session.FreshFolderName" Label="Folder Name" Variant="Variant.Outlined"
+                  Placeholder="my-new-project" Immediate="true" Class="mt-4"
+                  HelperText="Will be created in system temp directory"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.DriveFileRenameOutline" />
+}
+
+@code {
+    [Parameter] public AgentSession Session { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private async Task SetMode(WorkspaceMode mode)
+    {
+        Session.WorkspaceMode = mode;
+        await OnChanged.InvokeAsync();
+    }
+}

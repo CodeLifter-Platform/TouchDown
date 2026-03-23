@@ -1,0 +1,192 @@
+@using System.IO
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">@(IsGitMode ? "Select Repository" : "Select Folder")</MudText>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="d-flex align-center gap-2 mb-3">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
+                           OnClick="NavigateUp" Disabled="@(currentDir.Parent == null)" />
+            <MudTextField @bind-Value="manualPath" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="Type a path..." Immediate="true"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.KeyboardReturn"
+                          OnAdornmentClick="GoToManualPath" OnKeyDown="HandlePathKeyDown"
+                          Class="flex-grow-1" />
+        </div>
+
+        <MudPaper Outlined="true" Class="pa-1" Style="max-height: 350px; overflow-y: auto;">
+            @if (error != null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="ma-2">@error</MudAlert>
+            }
+
+            @if (!entries.Any() && error == null)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4 text-center">Empty folder</MudText>
+            }
+
+            <MudList T="string" Dense="true" Class="py-0">
+                @foreach (var entry in entries)
+                {
+                    var isGit = gitRepos.Contains(entry.FullName);
+                    <MudListItem T="string" Icon="@(isGit ? Icons.Material.Filled.Source : Icons.Material.Filled.Folder)"
+                                 IconColor="@(isGit ? Color.Primary : Color.Default)"
+                                 OnClick="() => OnEntryClick(entry)"
+                                 Class="@(selectedPath == entry.FullName ? "mud-primary-text" : "")">
+                        <div class="d-flex align-center justify-space-between" style="width: 100%;">
+                            <MudText Typo="Typo.body2" Style="@(selectedPath == entry.FullName ? "font-weight: 600;" : "")">
+                                @entry.Name
+                            </MudText>
+                            @if (isGit)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">git</MudChip>
+                            }
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+            Current: <strong>@currentDir.FullName</strong>
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(selectedPath))
+        {
+            <MudAlert Severity="Severity.Success" Dense="true" Variant="Variant.Outlined" Class="mt-2"
+                      Icon="@Icons.Material.Filled.CheckCircle">
+                Selected: <strong>@selectedPath</strong>
+            </MudAlert>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm"
+                   Disabled="@string.IsNullOrEmpty(selectedPath)"
+                   StartIcon="@Icons.Material.Filled.Check">
+            Select
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public bool IsGitMode { get; set; }
+    [Parameter] public string? InitialPath { get; set; }
+
+    private DirectoryInfo currentDir = null!;
+    private List<DirectoryInfo> entries = [];
+    private HashSet<string> gitRepos = [];
+    private string? selectedPath;
+    private string manualPath = "";
+    private string? error;
+
+    protected override void OnInitialized()
+    {
+        var startPath = InitialPath;
+
+        if (string.IsNullOrEmpty(startPath) || !Directory.Exists(startPath))
+            startPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        NavigateTo(startPath);
+    }
+
+    private void NavigateTo(string path)
+    {
+        try
+        {
+            error = null;
+            currentDir = new DirectoryInfo(path);
+            manualPath = currentDir.FullName;
+
+            entries = currentDir.GetDirectories()
+                .Where(d => !d.Name.StartsWith('.') && !d.Attributes.HasFlag(FileAttributes.Hidden))
+                .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Detect git repos (have a .git subdirectory)
+            gitRepos = entries
+                .Where(d => Directory.Exists(Path.Combine(d.FullName, ".git")))
+                .Select(d => d.FullName)
+                .ToHashSet();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            error = "Access denied to this folder.";
+            entries = [];
+            gitRepos = [];
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            entries = [];
+            gitRepos = [];
+        }
+    }
+
+    private void OnEntryClick(DirectoryInfo entry)
+    {
+        if (IsGitMode && gitRepos.Contains(entry.FullName))
+        {
+            // In git mode, clicking a git repo selects it
+            selectedPath = entry.FullName;
+        }
+        else
+        {
+            // Double-duty: first click selects, acts as navigate on non-git folders
+            if (selectedPath == entry.FullName)
+            {
+                // Second click navigates into
+                NavigateTo(entry.FullName);
+                selectedPath = null;
+            }
+            else
+            {
+                selectedPath = entry.FullName;
+            }
+        }
+    }
+
+    private void NavigateUp()
+    {
+        if (currentDir.Parent != null)
+        {
+            NavigateTo(currentDir.Parent.FullName);
+            selectedPath = null;
+        }
+    }
+
+    private void GoToManualPath()
+    {
+        if (!string.IsNullOrWhiteSpace(manualPath) && Directory.Exists(manualPath))
+        {
+            NavigateTo(manualPath);
+            selectedPath = manualPath;
+        }
+        else
+        {
+            error = "Path does not exist.";
+        }
+    }
+
+    private void HandlePathKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            GoToManualPath();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Confirm()
+    {
+        if (!string.IsNullOrEmpty(selectedPath))
+            MudDialog.Close(DialogResult.Ok(selectedPath));
+    }
+}

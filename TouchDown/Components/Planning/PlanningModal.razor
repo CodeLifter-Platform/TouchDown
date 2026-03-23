@@ -1,0 +1,153 @@
+@implements IAsyncDisposable
+
+<MudOverlay Visible="true" DarkBackground="true" OnClick="OnClose" ZIndex="1000" />
+
+<MudPaper Class="huddle-modal" Elevation="8">
+    <MudToolBar Dense="true" Class="huddle-header">
+        <MudIcon Icon="@Icons.Material.Filled.Sports" Color="Color.Primary" Class="mr-2" />
+        <MudText Typo="Typo.h6">The Huddle</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-3">
+            @(Session.Team?.GetLeader()?.Name ?? "Quarterback") is reviewing the play
+        </MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="OnClose" />
+    </MudToolBar>
+
+    <div class="huddle-chat">
+        @foreach (var msg in messages)
+        {
+            <div class="d-flex @(msg.Role == "user" ? "justify-end" : "justify-start") mb-2">
+                <MudPaper Class="pa-3" MaxWidth="85%"
+                          Style="@(msg.Role == "user"
+                              ? "background: rgba(59,130,246,0.12);"
+                              : "background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);")">
+                    <div class="d-flex justify-space-between mb-1">
+                        <MudText Typo="Typo.caption" Style="font-weight: 600;">
+                            @(msg.Role == "user" ? "You" : Session.Team?.GetLeader()?.Name ?? "QB")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@msg.Timestamp.ToString("HH:mm")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@msg.Content</MudText>
+                </MudPaper>
+            </div>
+        }
+
+        @if (isStreaming)
+        {
+            <div class="d-flex justify-start mb-2">
+                <MudPaper Class="pa-3" MaxWidth="85%"
+                          Style="background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);">
+                    <MudText Typo="Typo.caption" Style="font-weight: 600;" Class="mb-1">
+                        @(Session.Team?.GetLeader()?.Name ?? "QB")
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@streamingContent<span class="cursor">|</span></MudText>
+                </MudPaper>
+            </div>
+        }
+    </div>
+
+    <MudDivider />
+
+    <div class="pa-3">
+        <MudTextField @bind-Value="userInput" Label="" Variant="Variant.Outlined" Lines="2"
+                      Placeholder="Discuss the plan with the Quarterback..."
+                      Disabled="@isStreaming" Immediate="true" OnKeyDown="HandleKeyDown" Class="mb-2" />
+        <div class="d-flex justify-end gap-2">
+            <MudButton Variant="Variant.Outlined" OnClick="SendMessage"
+                       Disabled="@(isStreaming || string.IsNullOrWhiteSpace(userInput))"
+                       StartIcon="@Icons.Material.Filled.Send">
+                Send
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SnapTheBall"
+                       Disabled="@(isStreaming || messages.Count < 2)"
+                       StartIcon="@Icons.Material.Filled.SportsCricket">
+                Snap the Ball!
+            </MudButton>
+        </div>
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public AgentSession Session { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnLaunch { get; set; }
+
+    [Inject] private IClaudeStreamingService Claude { get; set; } = null!;
+    [Inject] private IAgentOrchestrationService Orchestration { get; set; } = null!;
+
+    private List<HuddleMessage> messages = [];
+    private string userInput = "";
+    private bool isStreaming;
+    private string streamingContent = "";
+    private CancellationTokenSource? cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var leader = Session.Team?.GetLeader();
+        if (leader != null)
+        {
+            messages.Add(new HuddleMessage { Role = "user", Content = $"Here's the play: {Session.TaskDescription}" });
+            await GetQbResponse();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(userInput)) return;
+        messages.Add(new HuddleMessage { Role = "user", Content = userInput });
+        userInput = "";
+        await GetQbResponse();
+    }
+
+    private async Task GetQbResponse()
+    {
+        var leader = Session.Team?.GetLeader();
+        if (leader == null) return;
+
+        isStreaming = true;
+        streamingContent = "";
+        cts = new CancellationTokenSource();
+
+        try
+        {
+            var context = string.Join("\n", messages.Select(m => $"{m.Role}: {m.Content}"));
+            var prompt = $"Review this conversation and provide your analysis, plan, and task breakdown:\n\n{context}";
+
+            await foreach (var chunk in Claude.StreamResponseAsync(
+                leader.Model.ToModelId(),
+                leader.SystemPrompt ?? "You are the Quarterback, the team leader.",
+                prompt, Session.RepoPath, cts.Token))
+            {
+                streamingContent += chunk;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            messages.Add(new HuddleMessage { Role = "quarterback", Content = streamingContent });
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            isStreaming = false;
+            streamingContent = "";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SnapTheBall()
+    {
+        Session.Drive.HuddlePlan = string.Join("\n---\n", messages.Where(m => m.Role == "quarterback").Select(m => m.Content));
+        var drive = await Orchestration.StartDriveAsync(Session);
+        await OnLaunch.InvokeAsync(drive.DriveId);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e is { Key: "Enter", ShiftKey: false })
+            await SendMessage();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (cts != null) { await cts.CancelAsync(); cts.Dispose(); }
+    }
+}
