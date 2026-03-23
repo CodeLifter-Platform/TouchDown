@@ -1,0 +1,15 @@
+services:
+  touchdown:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - td-data:/app/data
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    restart: unless-stopped
+
+volumes:
+  td-data:

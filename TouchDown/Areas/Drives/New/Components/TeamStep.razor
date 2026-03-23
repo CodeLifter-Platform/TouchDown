@@ -1,0 +1,176 @@
+@using TD.Areas.Drives.New
+
+<MudText Typo="Typo.h6" Class="mb-1">Build Your Roster</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Select a preset agent team or build your own custom roster.
+</MudText>
+
+<MudStack Spacing="3">
+    @foreach (var team in availableTeams)
+    {
+        <MudCard Outlined="true" Class="@(Session.Team?.Id == team.Id ? "mud-border-primary" : "")"
+                 Style="cursor: pointer;" @onclick="() => SelectTeam(team)">
+            <MudCardContent>
+                <div class="d-flex justify-space-between align-center mb-2">
+                    <MudText Typo="Typo.subtitle1">@team.Name</MudText>
+                    @if (team.IsDefault)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Default</MudChip>
+                    }
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@team.Description</MudText>
+                <MudChipSet T="string" ReadOnly="true">
+                    @foreach (var member in team.Members)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(member.Role)" Variant="Variant.Outlined"
+                                 Icon="@(member.IsLeader ? Icons.Material.Filled.Star : null)">
+                            @member.Name (@member.Model.ToDisplayName())
+                        </MudChip>
+                    }
+                </MudChipSet>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    <MudCard Outlined="true" Class="@(showCustomBuilder ? "mud-border-primary" : "")"
+             Style="cursor: pointer;" @onclick="ToggleCustomBuilder">
+        <MudCardContent>
+            <MudText Typo="Typo.subtitle1">+ Custom Team</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Build your own agent roster with custom roles and models.</MudText>
+        </MudCardContent>
+    </MudCard>
+</MudStack>
+
+@if (showCustomBuilder)
+{
+    <MudPaper Outlined="true" Class="pa-4 mt-4">
+        <MudTextField @bind-Value="customTeamName" Label="Team Name" Variant="Variant.Outlined"
+                      Placeholder="My Custom Team" Class="mb-4" />
+
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Team Members</MudText>
+
+        @for (int i = 0; i < customMembers.Count; i++)
+        {
+            var idx = i;
+            <MudGrid Class="mb-2">
+                <MudItem xs="4">
+                    <MudTextField @bind-Value="customMembers[idx].Name" Label="Name" Variant="Variant.Outlined"
+                                  Placeholder="Agent Name" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSelect T="AgentRole" @bind-Value="customMembers[idx].Role" Label="Role" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var role in Enum.GetValues<AgentRole>())
+                        {
+                            <MudSelectItem T="AgentRole" Value="@role">@role</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="3">
+                    <MudSelect T="ClaudeModel" @bind-Value="customMembers[idx].Model" Label="Model" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var model in Enum.GetValues<ClaudeModel>())
+                        {
+                            <MudSelectItem T="ClaudeModel" Value="@model">@model.ToDisplayName()</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="2" Class="d-flex align-center">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                   OnClick="() => RemoveMember(idx)" Disabled="@(customMembers.Count <= 1)" />
+                </MudItem>
+            </MudGrid>
+        }
+
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddMember"
+                   Class="mb-4">
+            Add Member
+        </MudButton>
+
+        <MudSelect T="CommStyle" @bind-Value="customCommStyle" Label="Communication Style" Variant="Variant.Outlined"
+                   Class="mb-4">
+            @foreach (var style in Enum.GetValues<CommStyle>())
+            {
+                <MudSelectItem T="CommStyle" Value="@style">@style</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCustomTeam"
+                   StartIcon="@Icons.Material.Filled.Save">
+            Save & Select Team
+        </MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public AgentSession Session { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Inject] private IDrivesNewService Service { get; set; } = null!;
+
+    private List<AgentTeam> availableTeams = [];
+    private bool showCustomBuilder;
+    private string customTeamName = "";
+    private List<AgentMember> customMembers = [];
+    private CommStyle customCommStyle = CommStyle.LeaderGated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        availableTeams = await Service.GetAvailableTeamsAsync();
+
+        if (Session.Team == null && availableTeams.Any())
+            Session.Team = availableTeams.FirstOrDefault(t => t.IsDefault) ?? availableTeams.First();
+    }
+
+    private async Task SelectTeam(AgentTeam team)
+    {
+        Session.Team = team;
+        showCustomBuilder = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    private void ToggleCustomBuilder()
+    {
+        showCustomBuilder = !showCustomBuilder;
+        if (customMembers.Count == 0)
+        {
+            customMembers.Add(new AgentMember { Name = "Leader", Role = AgentRole.Leader, Model = ClaudeModel.Opus });
+            customMembers.Add(new AgentMember { Name = "Worker 1", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet });
+        }
+    }
+
+    private void AddMember() =>
+        customMembers.Add(new AgentMember { Name = $"Agent {customMembers.Count + 1}", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet });
+
+    private void RemoveMember(int index) { if (customMembers.Count > 1) customMembers.RemoveAt(index); }
+
+    private async Task SaveCustomTeam()
+    {
+        if (string.IsNullOrWhiteSpace(customTeamName)) return;
+
+        var team = new AgentTeam
+        {
+            Name = customTeamName,
+            Description = $"Custom team with {customMembers.Count} agents",
+            Members = customMembers.Select(m => new AgentMember
+            {
+                Name = m.Name, Role = m.Role, Model = m.Model,
+                SystemPrompt = $"You are {m.Name} with the role of {m.Role}."
+            }).ToList(),
+            CommunicationRules = [new CommunicationRule { Style = customCommStyle, Description = $"Custom team using {customCommStyle} communication" }]
+        };
+
+        team = await Service.SaveCustomTeamAsync(team);
+        availableTeams.Add(team);
+        Session.Team = team;
+        showCustomBuilder = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    private static Color GetRoleColor(AgentRole role) => role switch
+    {
+        AgentRole.Leader => Color.Primary,
+        AgentRole.Worker => Color.Info,
+        AgentRole.Validator => Color.Success,
+        AgentRole.Tester => Color.Secondary,
+        AgentRole.DevOps => Color.Warning,
+        _ => Color.Default
+    };
+}

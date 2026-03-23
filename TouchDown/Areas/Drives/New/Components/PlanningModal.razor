@@ -1,0 +1,94 @@
+@using TD.Areas.Drives.New
+
+<MudOverlay Visible="true" DarkBackground="true" OnClick="OnClose" ZIndex="1000" />
+
+<MudPaper Class="huddle-modal" Elevation="8">
+    <MudToolBar Dense="true" Class="huddle-header">
+        <MudIcon Icon="@Icons.Material.Filled.Sports" Color="Color.Primary" Class="mr-2" />
+        <MudText Typo="Typo.h6">The Huddle</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-3">
+            @(Session.Team?.GetLeader()?.Name ?? "Quarterback") is reviewing the play
+        </MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="OnClose" />
+    </MudToolBar>
+
+    <div class="huddle-chat">
+        @foreach (var msg in vm.Messages)
+        {
+            <div class="d-flex @(msg.Role == "user" ? "justify-end" : "justify-start") mb-2">
+                <MudPaper Class="pa-3" MaxWidth="85%"
+                          Style="@(msg.Role == "user"
+                              ? "background: rgba(59,130,246,0.12);"
+                              : "background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);")">
+                    <div class="d-flex justify-space-between mb-1">
+                        <MudText Typo="Typo.caption" Style="font-weight: 600;">
+                            @(msg.Role == "user" ? "You" : Session.Team?.GetLeader()?.Name ?? "QB")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@msg.Timestamp.ToString("HH:mm")</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@msg.Content</MudText>
+                </MudPaper>
+            </div>
+        }
+
+        @if (vm.IsStreaming)
+        {
+            <div class="d-flex justify-start mb-2">
+                <MudPaper Class="pa-3" MaxWidth="85%"
+                          Style="background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);">
+                    <MudText Typo="Typo.caption" Style="font-weight: 600;" Class="mb-1">
+                        @(Session.Team?.GetLeader()?.Name ?? "QB")
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@vm.StreamingContent<span class="cursor">|</span></MudText>
+                </MudPaper>
+            </div>
+        }
+    </div>
+
+    <MudDivider />
+
+    <div class="pa-3">
+        <MudTextField @bind-Value="vm.UserInput" Label="" Variant="Variant.Outlined" Lines="2"
+                      Placeholder="Discuss the plan with the Quarterback..."
+                      Disabled="@vm.IsStreaming" Immediate="true" OnKeyDown="HandleKeyDown" Class="mb-2" />
+        <div class="d-flex justify-end gap-2">
+            <MudButton Variant="Variant.Outlined" OnClick="() => vm.SendMessageCommand.ExecuteAsync(null)"
+                       Disabled="@(vm.IsStreaming || string.IsNullOrWhiteSpace(vm.UserInput))"
+                       StartIcon="@Icons.Material.Filled.Send">
+                Send
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="SnapTheBall"
+                       Disabled="@(!vm.CanSnap)"
+                       StartIcon="@Icons.Material.Filled.SportsCricket">
+                Snap the Ball!
+            </MudButton>
+        </div>
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public AgentSession Session { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnLaunch { get; set; }
+
+    [Inject] private HuddleVM vm { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        vm.PropertyChanged += (_, _) => InvokeAsync(StateHasChanged);
+        await vm.InitializeWithSession(Session);
+    }
+
+    private async Task SnapTheBall()
+    {
+        var driveId = await vm.SnapTheBall();
+        if (driveId != null) await OnLaunch.InvokeAsync(driveId);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e is { Key: "Enter", ShiftKey: false })
+            await vm.SendMessageCommand.ExecuteAsync(null);
+    }
+}

@@ -1,0 +1,111 @@
+@page "/new-drive"
+@using TD.MVVM.Components
+@using TD.Areas.Drives.New.Components
+@inherits ViewComponentBase<DrivesNewPageVM>
+@rendermode InteractiveServer
+
+<PageTitle>TD - New Drive</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium">
+    <MudText Typo="Typo.h5" Class="mb-4">New Drive</MudText>
+
+    <MudStepper @bind-ActiveIndex="VM.CurrentStep" NonLinear="true">
+        <ChildContent>
+            <MudStep Title="Source">
+                <SourceStep Session="VM.Session" OnChanged="VM.RefreshCanStart" />
+            </MudStep>
+
+            <MudStep Title="Team">
+                <TeamStep Session="VM.Session" OnChanged="VM.RefreshCanStart" />
+            </MudStep>
+
+            <MudStep Title="Task">
+                <TaskStep Session="VM.Session" OnChanged="VM.RefreshCanStart" />
+            </MudStep>
+        </ChildContent>
+    </MudStepper>
+
+    @* ── Persistent launch bar ── *@
+    <MudPaper Class="pa-4 mt-4" Outlined="true">
+        <div class="d-flex align-center justify-space-between">
+            <div>
+                <MudText Typo="Typo.subtitle2">Ready to launch?</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @if (VM.CanStartHuddle)
+                    {
+                        <text>The Quarterback will review your play before the team executes.</text>
+                    }
+                    else
+                    {
+                        @VM.MissingStepsText
+                    }
+                </MudText>
+            </div>
+            <div class="d-flex gap-2">
+                @if (VM.CanSkipHuddle)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SnapDirectly"
+                               StartIcon="@Icons.Material.Filled.FlashOn">
+                        Snap Without Huddle
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="() => VM.StartHuddleCommand.Execute(null)"
+                           Disabled="@(!VM.CanStartHuddle)" StartIcon="@Icons.Material.Filled.Sports"
+                           Size="Size.Large">
+                    Start the Huddle
+                </MudButton>
+            </div>
+        </div>
+
+        @if (VM.CanStartHuddle)
+        {
+            <MudDivider Class="my-3" />
+            <div class="d-flex gap-4 flex-wrap">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">SOURCE</MudText>
+                    <MudText Typo="Typo.body2">@VM.SourceDisplayName</MudText>
+                </div>
+                @if (!string.IsNullOrEmpty(VM.Session.Branch))
+                {
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">BRANCH</MudText>
+                        <MudText Typo="Typo.body2">@VM.Session.Branch</MudText>
+                    </div>
+                }
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">MODE</MudText>
+                    <MudText Typo="Typo.body2">@VM.ModeDisplayName</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">TEAM</MudText>
+                    <MudText Typo="Typo.body2">@(VM.Session.Team?.Name ?? "—")</MudText>
+                </div>
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">PARALLELISM</MudText>
+                    <MudText Typo="Typo.body2">@VM.Session.MaxParallelism agents</MudText>
+                </div>
+            </div>
+        }
+    </MudPaper>
+</MudContainer>
+
+@if (VM.ShowHuddle)
+{
+    <PlanningModal Session="VM.Session" OnClose="() => VM.CloseHuddle()" OnLaunch="LaunchDrive" />
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private async Task SnapDirectly()
+    {
+        var driveId = await VM.SnapDirectly();
+        if (driveId != null) Navigation.NavigateTo($"/drive/{driveId}");
+    }
+
+    private void LaunchDrive(string driveId)
+    {
+        VM.CloseHuddle();
+        Navigation.NavigateTo($"/drive/{driveId}");
+    }
+}

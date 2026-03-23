@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+WORKDIR /src
+
+# Install the debugger
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip \
+    && curl -sSL https://aka.ms/getvsdbgsh | bash /dev/stdin -v latest -l /vsdbg \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 8080
+
+COPY ["TouchDown/TouchDown.csproj", "TouchDown/"]
+COPY ["Data/Data.csproj", "Data/"]
+RUN dotnet restore "TouchDown/TouchDown.csproj"
+COPY . .
+WORKDIR "/src/TouchDown"
+RUN dotnet build -c Debug -o /app
+
+WORKDIR /app
+ENV ASPNETCORE_ENVIRONMENT=Development
+ENV DOTNET_USE_POLLING_FILE_WATCHER=true
+ENTRYPOINT ["dotnet", "TD.dll"]

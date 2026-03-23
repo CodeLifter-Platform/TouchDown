@@ -1,0 +1,298 @@
+@using TD.Models
+
+<MudPaper Outlined="true" Class="mt-4">
+    <MudToolBar Dense="true">
+        <MudIcon Icon="@Icons.Material.Filled.SaveAlt" Class="mr-2" Size="Size.Small" Color="Color.Primary" />
+        <MudText Typo="Typo.subtitle2">Post-Drive Actions</MudText>
+        <MudSpacer />
+        @if (gitStatus != null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="@(gitStatus.HasChanges ? Color.Warning : Color.Success)" Variant="Variant.Outlined">
+                @(gitStatus.HasChanges ? $"{gitStatus.TotalChanges} changes" : "Clean")
+            </MudChip>
+        }
+    </MudToolBar>
+    <MudDivider />
+
+    <div class="pa-4">
+        @if (loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+        }
+
+        @if (error != null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true"
+                      CloseIconClicked="() => error = null">
+                @error
+            </MudAlert>
+        }
+
+        @if (successMessage != null)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" ShowCloseIcon="true"
+                      CloseIconClicked="() => successMessage = null">
+                @successMessage
+            </MudAlert>
+        }
+
+        @* ── Step 1: Review changes ── *@
+        @if (gitStatus != null && !committed)
+        {
+            @if (gitStatus.HasChanges)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Changes from this Drive</MudText>
+
+                @if (diffSummary != null)
+                {
+                    <div class="d-flex gap-4 mb-3">
+                        <MudText Typo="Typo.body2">
+                            <strong>@diffSummary.FilesChanged</strong> file(s) changed
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Success">
+                            +@diffSummary.Insertions
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Error">
+                            -@diffSummary.Deletions
+                        </MudText>
+                    </div>
+                }
+
+                @if (gitStatus.ModifiedFiles.Count > 0 || gitStatus.StagedFiles.Count > 0)
+                {
+                    <MudExpansionPanels Dense="true" Elevation="0" Class="mb-3">
+                        <MudExpansionPanel Text="@($"Modified files ({gitStatus.ModifiedFiles.Count + gitStatus.StagedFiles.Count})")">
+                            <MudList T="string" Dense="true">
+                                @foreach (var file in gitStatus.StagedFiles.Concat(gitStatus.ModifiedFiles))
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.EditNote" IconColor="Color.Warning">
+                                        <MudText Typo="Typo.body2" Style="font-family: monospace;">@file</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                @if (gitStatus.UntrackedFiles.Count > 0)
+                {
+                    <MudExpansionPanels Dense="true" Elevation="0" Class="mb-3">
+                        <MudExpansionPanel Text="@($"New files ({gitStatus.UntrackedFiles.Count})")">
+                            <MudList T="string" Dense="true">
+                                @foreach (var file in gitStatus.UntrackedFiles)
+                                {
+                                    <MudListItem T="string" Icon="@Icons.Material.Filled.NoteAdd" IconColor="Color.Success">
+                                        <MudText Typo="Typo.body2" Style="font-family: monospace;">@file</MudText>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                @if (showDiff)
+                {
+                    <MudExpansionPanels Dense="true" Elevation="0" Class="mb-3">
+                        <MudExpansionPanel Text="Full Diff">
+                            <pre class="log-stream pa-2" style="max-height: 300px; overflow: auto; font-size: 0.75rem;">@diffSummary?.DiffText</pre>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => showDiff = !showDiff" Class="mb-3">
+                    @(showDiff ? "Hide diff" : "Show full diff")
+                </MudButton>
+
+                @* ── Commit form ── *@
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Commit</MudText>
+
+                <MudTextField @bind-Value="commitMessage" Label="Commit Message" Variant="Variant.Outlined"
+                              Lines="3" Placeholder="Describe what this drive accomplished..."
+                              Class="mb-3" />
+
+                <div class="d-flex gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CommitChanges"
+                               Disabled="@(loading || string.IsNullOrWhiteSpace(commitMessage))"
+                               StartIcon="@Icons.Material.Filled.Save">
+                        Commit All Changes
+                    </MudButton>
+                </div>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
+                    No uncommitted changes in the workspace.
+                </MudAlert>
+            }
+        }
+
+        @* ── Step 2: Push / PR (after commit or if already clean) ── *@
+        @if (committed || (gitStatus != null && !gitStatus.HasChanges))
+        {
+            @if (committed)
+            {
+                <MudDivider Class="my-3" />
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                @(Drive.WorkspaceMode == WorkspaceMode.PrWorktree ? "Push & Create PR" : "Push to Remote")
+            </MudText>
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                @if (Drive.WorkspaceMode == WorkspaceMode.PrWorktree)
+                {
+                    <text>Push branch <strong>@(Drive.PrBranchName ?? currentBranch)</strong> to origin and create a pull request.</text>
+                }
+                else
+                {
+                    <text>Push commits on <strong>@currentBranch</strong> to origin.</text>
+                }
+            </MudText>
+
+            <div class="d-flex gap-2">
+                @if (!pushed)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="PushChanges"
+                               Disabled="@loading" StartIcon="@Icons.Material.Filled.CloudUpload">
+                        Push to Origin
+                    </MudButton>
+                }
+
+                @if (pushed && Drive.WorkspaceMode == WorkspaceMode.PrWorktree && !string.IsNullOrEmpty(remoteUrl))
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenPrUrl"
+                               StartIcon="@Icons.Material.Filled.OpenInNew">
+                        Create Pull Request
+                    </MudButton>
+                }
+
+                @if (pushed)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Variant="Variant.Outlined" Class="flex-grow-1">
+                        Pushed successfully to origin/@(Drive.PrBranchName ?? currentBranch)
+                    </MudAlert>
+                }
+            </div>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public Drive Drive { get; set; } = null!;
+
+    [Inject] private IGitWorktreeService Git { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private GitStatusResult? gitStatus;
+    private GitDiffSummary? diffSummary;
+    private string commitMessage = "";
+    private string? currentBranch;
+    private string? remoteUrl;
+    private bool loading;
+    private bool committed;
+    private bool pushed;
+    private bool showDiff;
+    private string? error;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var workDir = Drive.WorkspacePath ?? Drive.RepoPath;
+        if (string.IsNullOrEmpty(workDir) || !Directory.Exists(workDir)) return;
+
+        loading = true;
+        try
+        {
+            gitStatus = await Git.GetStatusAsync(workDir);
+            if (gitStatus.HasChanges)
+            {
+                diffSummary = await Git.GetDiffSummaryAsync(workDir);
+                commitMessage = $"feat: {Drive.TaskDescription}";
+                if (commitMessage.Length > 72)
+                    commitMessage = commitMessage[..69] + "...";
+            }
+
+            try { currentBranch = await Git.GetCurrentBranchAsync(workDir); } catch { }
+            try { remoteUrl = await Git.GetRemoteUrlAsync(workDir); } catch { }
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to read git status: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task CommitChanges()
+    {
+        var workDir = Drive.WorkspacePath ?? Drive.RepoPath;
+        if (string.IsNullOrEmpty(workDir)) return;
+
+        loading = true;
+        error = null;
+        try
+        {
+            var result = await Git.CommitAsync(workDir, commitMessage);
+            committed = true;
+            successMessage = "Changes committed successfully.";
+            gitStatus = await Git.GetStatusAsync(workDir);
+        }
+        catch (Exception ex)
+        {
+            error = $"Commit failed: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task PushChanges()
+    {
+        var workDir = Drive.WorkspacePath ?? Drive.RepoPath;
+        if (string.IsNullOrEmpty(workDir)) return;
+
+        loading = true;
+        error = null;
+        try
+        {
+            var branch = Drive.PrBranchName ?? currentBranch;
+            await Git.PushAsync(workDir, branch);
+            pushed = true;
+            successMessage = $"Pushed to origin/{branch}";
+        }
+        catch (Exception ex)
+        {
+            error = $"Push failed: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OpenPrUrl()
+    {
+        if (string.IsNullOrEmpty(remoteUrl)) return;
+
+        var cleanUrl = remoteUrl
+            .Replace(".git", "")
+            .Replace("git@github.com:", "https://github.com/")
+            .Replace("git@gitlab.com:", "https://gitlab.com/");
+
+        var branch = Drive.PrBranchName ?? currentBranch ?? "main";
+
+        string prUrl;
+        if (cleanUrl.Contains("github.com"))
+            prUrl = $"{cleanUrl}/compare/{Drive.Branch}...{branch}?expand=1";
+        else if (cleanUrl.Contains("gitlab.com"))
+            prUrl = $"{cleanUrl}/-/merge_requests/new?merge_request[source_branch]={branch}&merge_request[target_branch]={Drive.Branch}";
+        else
+            prUrl = cleanUrl;
+
+        Navigation.NavigateTo(prUrl, forceLoad: true);
+    }
+}

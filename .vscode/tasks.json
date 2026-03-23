@@ -12,6 +12,31 @@
         "/consoleloggerparameters:NoSummary;ForceNoAlign"
       ],
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "docker-compose-debug-up",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.debug.yml up --build -d",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Creating|^Building|^Starting",
+          "endsPattern": "Started$|Running$"
+        }
+      }
+    },
+    {
+      "label": "docker-compose-debug-down",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.debug.yml down",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
     }
   ]
 }

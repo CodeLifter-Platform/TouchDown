@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+    
     {
       "name": "TD (http)",
       "type": "coreclr",
@@ -35,6 +36,24 @@
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      }
+    },
+    {
+      "name": "TD (Docker Compose)",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickRemoteProcess}",
+      "preLaunchTask": "docker-compose-debug-up",
+      "postDebugTask": "docker-compose-debug-down",
+      "sourceFileMap": {
+        "/src": "${workspaceFolder}"
+      },
+      "pipeTransport": {
+        "pipeProgram": "docker",
+        "pipeArgs": ["exec", "-i", "touchdown-touchdown-1"],
+        "debuggerPath": "/vsdbg/vsdbg",
+        "pipeCwd": "${workspaceFolder}",
+        "quoteArgs": false
       }
     }
   ]

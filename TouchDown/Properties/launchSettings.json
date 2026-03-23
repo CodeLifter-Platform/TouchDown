@@ -18,6 +18,16 @@
         "environmentVariables": {
           "ASPNETCORE_ENVIRONMENT": "Development"
         }
+      },
+      "Docker Compose": {
+        "commandName": "Executable",
+        "executablePath": "docker",
+        "commandLineArgs": "compose -f docker-compose.debug.yml up --build",
+        "launchBrowser": true,
+        "launchUrl": "http://localhost:8080",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
       }
     }
   }

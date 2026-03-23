@@ -1,0 +1,16 @@
+services:
+  touchdown:
+    build:
+      context: .
+      dockerfile: Dockerfile.debug
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/src
+      - td-debug-data:/app/data
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+
+volumes:
+  td-debug-data:
