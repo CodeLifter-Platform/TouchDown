@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Data\Data.csproj" />
+    <ProjectReference Include="..\Themes\Themes.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,13 @@
+**/.git
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/.AI
+**/node_modules
+**/*.user
+**/*.dbmdl
+**/*.jfm
+**/touchdown.db
+**/touchdown.db-shm
+**/touchdown.db-wal
