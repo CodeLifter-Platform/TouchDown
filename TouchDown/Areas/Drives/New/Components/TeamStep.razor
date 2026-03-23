@@ -1,5 +1,4 @@
-@using TD.Data
-@using Microsoft.EntityFrameworkCore
+@using TD.Areas.Drives.New
 
 <MudText Typo="Typo.h6" Class="mb-1">Build Your Roster</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
@@ -104,7 +103,7 @@
 @code {
     [Parameter] public AgentSession Session { get; set; } = null!;
     [Parameter] public EventCallback OnChanged { get; set; }
-    [Inject] private IDbContextFactory<TDDbContext> DbFactory { get; set; } = null!;
+    [Inject] private IDrivesNewService Service { get; set; } = null!;
 
     private List<AgentTeam> availableTeams = [];
     private bool showCustomBuilder;
@@ -114,11 +113,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        availableTeams = await db.AgentTeams
-            .Include(t => t.Members)
-            .Include(t => t.CommunicationRules)
-            .ToListAsync();
+        availableTeams = await Service.GetAvailableTeamsAsync();
 
         if (Session.Team == null && availableTeams.Any())
             Session.Team = availableTeams.FirstOrDefault(t => t.IsDefault) ?? availableTeams.First();
@@ -150,7 +145,6 @@
     {
         if (string.IsNullOrWhiteSpace(customTeamName)) return;
 
-        await using var db = await DbFactory.CreateDbContextAsync();
         var team = new AgentTeam
         {
             Name = customTeamName,
@@ -163,8 +157,7 @@
             CommunicationRules = [new CommunicationRule { Style = customCommStyle, Description = $"Custom team using {customCommStyle} communication" }]
         };
 
-        db.AgentTeams.Add(team);
-        await db.SaveChangesAsync();
+        team = await Service.SaveCustomTeamAsync(team);
         availableTeams.Add(team);
         Session.Team = team;
         showCustomBuilder = false;

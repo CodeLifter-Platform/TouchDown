@@ -1,8 +1,8 @@
 @page "/drive/{DriveId}"
 @using Microsoft.AspNetCore.SignalR.Client
 @using TD.MVVM.Components
-@using TD.ViewModels
-@inherits ViewComponentBase<DriveMonitorVM>
+@using TD.Areas.Drives.Monitor.Components
+@inherits ViewComponentBase<DrivesMonitorPageVM>
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
@@ -14,7 +14,7 @@
             <MudText Typo="Typo.h5">Drive: <span style="font-family: monospace;">@DriveId</span></MudText>
             @if (VM.Drive != null)
             {
-                <MudChip T="string" Size="Size.Small" Color="@DriveMonitorVM.GetStatusColor(VM.Drive.Status)" Variant="Variant.Filled">
+                <MudChip T="string" Size="Size.Small" Color="@DrivesMonitorPageVM.GetStatusColor(VM.Drive.Status)" Variant="Variant.Filled">
                     @VM.Drive.Status
                 </MudChip>
             }
@@ -44,7 +44,7 @@
                         <MudCardContent Class="pa-3">
                             <div class="d-flex justify-space-between align-center mb-2">
                                 <MudText Typo="Typo.body2" Style="font-weight: 600;">@status.Key</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="@DriveMonitorVM.GetAgentStatusColor(status.Value.Status)"
+                                <MudChip T="string" Size="Size.Small" Color="@DrivesMonitorPageVM.GetAgentStatusColor(status.Value.Status)"
                                          Variant="Variant.Outlined">
                                     @status.Value.Status
                                 </MudChip>
@@ -112,7 +112,7 @@
 
         hubConnection.On<dynamic>("ReceiveLog", (log) =>
         {
-            VM.AddLog(new DriveMonitorVM.LogEntry
+            VM.AddLog(new LogEntry
             {
                 Timestamp = DateTime.UtcNow,
                 AgentName = (string)(log.AgentName ?? "System"),

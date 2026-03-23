@@ -1,5 +1,8 @@
-- custom exceptions should all be named relative to the classfile they are inside of (ActionService would contain and ActionException)
-- custome exceptions must have 3 constructores
-    1: no paramater
-    2: a message
-    3: a message and an innerException
+- DA stands for DataAccessor and that is all these should do, connect a service directly to the DB using an injected DBContextFactory.
+- DA Should implement Serilog Stuructured logging
+- DAs must have a complete interface applied to all public methods
+- Da should have its own custom exception
+- DA should be shaped like 
+      Interface
+      Custom exception
+      DA Class

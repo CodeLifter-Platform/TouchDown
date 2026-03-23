@@ -1,7 +1,6 @@
 @page "/teams"
 @using TD.MVVM.Components
-@using TD.ViewModels
-@inherits ViewComponentBase<TeamsVM>
+@inherits ViewComponentBase<TeamsIndexPageVM>
 @rendermode InteractiveServer
 
 <PageTitle>TD - Teams</PageTitle>
@@ -52,7 +51,7 @@
                                             </div>
                                         </td>
                                         <td>
-                                            <MudChip T="string" Size="Size.Small" Color="@TeamsVM.GetRoleColor(member.Role)" Variant="Variant.Outlined">
+                                            <MudChip T="string" Size="Size.Small" Color="@TeamsIndexPageVM.GetRoleColor(member.Role)" Variant="Variant.Outlined">
                                                 @member.Role
                                             </MudChip>
                                         </td>

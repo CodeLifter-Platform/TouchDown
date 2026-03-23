@@ -238,7 +238,6 @@
             var result = await Git.CommitAsync(workDir, commitMessage);
             committed = true;
             successMessage = "Changes committed successfully.";
-            // Refresh status
             gitStatus = await Git.GetStatusAsync(workDir);
         }
         catch (Exception ex)
@@ -279,7 +278,6 @@
     {
         if (string.IsNullOrEmpty(remoteUrl)) return;
 
-        // Build GitHub/GitLab PR URL
         var cleanUrl = remoteUrl
             .Replace(".git", "")
             .Replace("git@github.com:", "https://github.com/")
@@ -293,7 +291,7 @@
         else if (cleanUrl.Contains("gitlab.com"))
             prUrl = $"{cleanUrl}/-/merge_requests/new?merge_request[source_branch]={branch}&merge_request[target_branch]={Drive.Branch}";
         else
-            prUrl = cleanUrl; // fallback
+            prUrl = cleanUrl;
 
         Navigation.NavigateTo(prUrl, forceLoad: true);
     }

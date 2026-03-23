@@ -1,7 +1,6 @@
 @page "/"
 @using TD.MVVM.Components
-@using TD.ViewModels
-@inherits ViewComponentBase<HomeVM>
+@inherits ViewComponentBase<HomeIndexPageVM>
 @rendermode InteractiveServer
 
 <PageTitle>TD</PageTitle>
@@ -66,10 +65,10 @@
                 <MudTd DataLabel="ID">
                     <MudText Typo="Typo.body2" Style="font-family: monospace;" Color="Color.Primary">@context.DriveId</MudText>
                 </MudTd>
-                <MudTd DataLabel="Task">@HomeVM.TruncateTask(context.TaskDescription)</MudTd>
+                <MudTd DataLabel="Task">@HomeIndexPageVM.TruncateTask(context.TaskDescription)</MudTd>
                 <MudTd DataLabel="Team">@(context.AgentTeam?.Name ?? "Unknown")</MudTd>
                 <MudTd DataLabel="Status">
-                    <MudChip T="string" Size="Size.Small" Color="@HomeVM.GetStatusColor(context.Status)" Variant="Variant.Outlined">
+                    <MudChip T="string" Size="Size.Small" Color="@HomeIndexPageVM.GetStatusColor(context.Status)" Variant="Variant.Outlined">
                         @context.Status
                     </MudChip>
                 </MudTd>

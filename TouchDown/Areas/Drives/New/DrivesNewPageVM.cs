@@ -1,18 +1,42 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Serilog;
 using TD.Models;
 using TD.MVVM.ViewModels;
-using TD.Services;
 
-namespace TD.ViewModels;
+namespace TD.Areas.Drives.New;
 
-public partial class DriveWizardVM : VM
+public interface IDrivesNewPageVM
 {
-    private readonly IAgentOrchestrationService _orchestration;
+    int CurrentStep { get; set; }
+    AgentSession Session { get; }
+    bool ShowHuddle { get; }
+    bool CanStartHuddle { get; }
+    bool CanSkipHuddle { get; }
+    string MissingStepsText { get; }
+    string SourceDisplayName { get; }
+    string ModeDisplayName { get; }
+    void RefreshCanStart();
+    void StartHuddle();
+    Task<string?> SnapDirectly();
+    void CloseHuddle();
+}
 
-    public DriveWizardVM(IAgentOrchestrationService orchestration)
+public class DrivesNewPageVMException : Exception
+{
+    public DrivesNewPageVMException() { }
+    public DrivesNewPageVMException(string message) : base(message) { }
+    public DrivesNewPageVMException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+public partial class DrivesNewPageVM : VM, IDrivesNewPageVM
+{
+    private readonly IDrivesNewService _service;
+    private readonly Serilog.ILogger _log = Log.ForContext<DrivesNewPageVM>();
+
+    public DrivesNewPageVM(IDrivesNewService service)
     {
-        _orchestration = orchestration;
+        _service = service;
     }
 
     [ObservableProperty]
@@ -51,6 +75,7 @@ public partial class DriveWizardVM : VM
     [RelayCommand]
     public void StartHuddle()
     {
+        _log.Debug("Starting huddle");
         Session.Drive = new Drive();
         ShowHuddle = true;
     }
@@ -58,9 +83,18 @@ public partial class DriveWizardVM : VM
     [RelayCommand]
     public async Task<string?> SnapDirectly()
     {
-        Session.Drive = new Drive();
-        var drive = await _orchestration.StartDriveAsync(Session);
-        return drive.DriveId;
+        _log.Information("Snapping directly without huddle");
+        try
+        {
+            Session.Drive = new Drive();
+            var drive = await _service.StartDriveAsync(Session);
+            return drive.DriveId;
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to snap directly");
+            throw new DrivesNewPageVMException("Failed to snap directly", ex);
+        }
     }
 
     public void CloseHuddle() => ShowHuddle = false;

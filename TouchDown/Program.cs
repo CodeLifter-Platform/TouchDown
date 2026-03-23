@@ -38,12 +38,26 @@ builder.Services.AddSingleton<IClaudeHealthCheck>(sp => sp.GetRequiredService<Cl
 builder.Services.AddHealthChecks()
     .AddCheck<ClaudeHealthCheck>("claude-code");
 
-// ViewModels (transient — each component gets its own instance)
-builder.Services.AddTransient<TD.ViewModels.HomeVM>();
-builder.Services.AddTransient<TD.ViewModels.DriveWizardVM>();
-builder.Services.AddTransient<TD.ViewModels.TeamsVM>();
-builder.Services.AddTransient<TD.ViewModels.DriveMonitorVM>();
-builder.Services.AddTransient<TD.ViewModels.HuddleVM>();
+// Area: Home/Index
+builder.Services.AddScoped<TD.Areas.Home.Index.IHomeIndexServiceDA, TD.Areas.Home.Index.HomeIndexServiceDA>();
+builder.Services.AddScoped<TD.Areas.Home.Index.IHomeIndexService, TD.Areas.Home.Index.HomeIndexService>();
+builder.Services.AddScoped<TD.Areas.Home.Index.HomeIndexPageVM>();
+
+// Area: Teams/Index
+builder.Services.AddScoped<TD.Areas.Teams.Index.ITeamsIndexServiceDA, TD.Areas.Teams.Index.TeamsIndexServiceDA>();
+builder.Services.AddScoped<TD.Areas.Teams.Index.ITeamsIndexService, TD.Areas.Teams.Index.TeamsIndexService>();
+builder.Services.AddScoped<TD.Areas.Teams.Index.TeamsIndexPageVM>();
+
+// Area: Drives/New
+builder.Services.AddScoped<TD.Areas.Drives.New.IDrivesNewServiceDA, TD.Areas.Drives.New.DrivesNewServiceDA>();
+builder.Services.AddScoped<TD.Areas.Drives.New.IDrivesNewService, TD.Areas.Drives.New.DrivesNewService>();
+builder.Services.AddScoped<TD.Areas.Drives.New.DrivesNewPageVM>();
+builder.Services.AddScoped<TD.Areas.Drives.New.HuddleVM>();
+
+// Area: Drives/Monitor
+builder.Services.AddScoped<TD.Areas.Drives.Monitor.IDrivesMonitorServiceDA, TD.Areas.Drives.Monitor.DrivesMonitorServiceDA>();
+builder.Services.AddScoped<TD.Areas.Drives.Monitor.IDrivesMonitorService, TD.Areas.Drives.Monitor.DrivesMonitorService>();
+builder.Services.AddScoped<TD.Areas.Drives.Monitor.DrivesMonitorPageVM>();
 
 // Application services
 builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>();
