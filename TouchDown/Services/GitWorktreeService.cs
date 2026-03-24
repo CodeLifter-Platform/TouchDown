@@ -32,6 +32,7 @@ public interface IGitWorktreeService
     Task<string> CommitAsync(string workingDir, string message, CancellationToken ct = default);
     Task PushAsync(string workingDir, string? remoteBranch = null, CancellationToken ct = default);
     Task<string> GetRemoteUrlAsync(string workingDir, CancellationToken ct = default);
+    Task<string> InitRepoAsync(string path, CancellationToken ct = default);
 }
 
 public class GitWorktreeService : IGitWorktreeService
@@ -170,6 +171,14 @@ public class GitWorktreeService : IGitWorktreeService
         {
             return "";
         }
+    }
+
+    public async Task<string> InitRepoAsync(string path, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(path);
+        await RunGitAsync(path, "init", ct);
+        _logger.LogInformation("Initialized git repo at {Path}", path);
+        return path;
     }
 
     private async Task<string> RunGitAsync(string workingDir, string arguments, CancellationToken ct)

@@ -1,4 +1,5 @@
 @using System.IO
+@inject IGitWorktreeService GitService
 
 <MudDialog>
     <TitleContent>
@@ -17,7 +18,72 @@
                           Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.KeyboardReturn"
                           OnAdornmentClick="GoToManualPath" OnKeyDown="HandlePathKeyDown"
                           Class="flex-grow-1" />
+            @if (AllowCreateFolder)
+            {
+                <MudTooltip Text="New Folder">
+                    <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small"
+                                   Color="@(showCreateFolder ? Color.Primary : Color.Default)"
+                                   OnClick="ToggleCreateFolder" />
+                </MudTooltip>
+            }
+            @if (AllowCreateRepo)
+            {
+                <MudTooltip Text="New Repository">
+                    <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Size="Size.Small"
+                                   Color="@(showCreateRepo ? Color.Primary : Color.Default)"
+                                   OnClick="ToggleCreateRepo" />
+                </MudTooltip>
+            }
         </div>
+
+        @if (AllowCreateFolder && showCreateFolder)
+        {
+            <div class="d-flex align-center gap-2 mb-3">
+                <MudTextField @bind-Value="newFolderName" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Placeholder="New folder name..." Immediate="true" Class="flex-grow-1"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.FolderSpecial"
+                              OnKeyDown="HandleNewFolderKeyDown" @ref="newFolderField" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           OnClick="CreateFolder" Disabled="@string.IsNullOrWhiteSpace(newFolderName)"
+                           Style="height: 40px;">
+                    Create
+                </MudButton>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="ToggleCreateFolder" />
+            </div>
+            @if (!string.IsNullOrEmpty(createFolderError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@createFolderError</MudAlert>
+            }
+        }
+
+        @if (AllowCreateRepo && showCreateRepo)
+        {
+            <div class="d-flex align-center gap-2 mb-3">
+                <MudTextField @bind-Value="newRepoName" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Placeholder="New repository name..." Immediate="true" Class="flex-grow-1"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Source"
+                              OnKeyDown="HandleNewRepoKeyDown" Disabled="@isCreatingRepo" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           OnClick="CreateRepoAsync" Style="height: 40px;"
+                           Disabled="@(string.IsNullOrWhiteSpace(newRepoName) || isCreatingRepo)">
+                    @if (isCreatingRepo)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                        <text>Initializing...</text>
+                    }
+                    else
+                    {
+                        <text>Init Repo</text>
+                    }
+                </MudButton>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                               OnClick="ToggleCreateRepo" Disabled="@isCreatingRepo" />
+            </div>
+            @if (!string.IsNullOrEmpty(createRepoError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@createRepoError</MudAlert>
+            }
+        }
 
         <MudPaper Outlined="true" Class="pa-1" Style="max-height: 350px; overflow-y: auto;">
             @if (error != null)
@@ -79,6 +145,8 @@
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
 
     [Parameter] public bool IsGitMode { get; set; }
+    [Parameter] public bool AllowCreateFolder { get; set; }
+    [Parameter] public bool AllowCreateRepo { get; set; }
     [Parameter] public string? InitialPath { get; set; }
 
     private DirectoryInfo currentDir = null!;
@@ -87,6 +155,16 @@
     private string? selectedPath;
     private string manualPath = "";
     private string? error;
+
+    private bool showCreateFolder;
+    private string newFolderName = "";
+    private string? createFolderError;
+    private MudTextField<string>? newFolderField;
+
+    private bool showCreateRepo;
+    private string newRepoName = "";
+    private string? createRepoError;
+    private bool isCreatingRepo;
 
     protected override void OnInitialized()
     {
@@ -180,6 +258,106 @@
     {
         if (e.Key == "Enter")
             GoToManualPath();
+    }
+
+    private void ToggleCreateFolder()
+    {
+        showCreateFolder = !showCreateFolder;
+        newFolderName = "";
+        createFolderError = null;
+    }
+
+    private void ToggleCreateRepo()
+    {
+        showCreateRepo = !showCreateRepo;
+        newRepoName = "";
+        createRepoError = null;
+    }
+
+    private void HandleNewFolderKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            CreateFolder();
+        else if (e.Key == "Escape")
+            ToggleCreateFolder();
+    }
+
+    private void CreateFolder()
+    {
+        createFolderError = null;
+        var name = newFolderName.Trim();
+
+        if (string.IsNullOrEmpty(name))
+            return;
+
+        // Reject names with path separators
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            createFolderError = "Folder name contains invalid characters.";
+            return;
+        }
+
+        var newPath = Path.Combine(currentDir.FullName, name);
+
+        try
+        {
+            Directory.CreateDirectory(newPath);
+        }
+        catch (Exception ex)
+        {
+            createFolderError = $"Could not create folder: {ex.Message}";
+            return;
+        }
+
+        showCreateFolder = false;
+        newFolderName = "";
+        NavigateTo(newPath);
+        selectedPath = newPath;
+    }
+
+    private void HandleNewRepoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            _ = CreateRepoAsync();
+        else if (e.Key == "Escape")
+            ToggleCreateRepo();
+    }
+
+    private async Task CreateRepoAsync()
+    {
+        createRepoError = null;
+        var name = newRepoName.Trim();
+
+        if (string.IsNullOrEmpty(name))
+            return;
+
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            createRepoError = "Repository name contains invalid characters.";
+            return;
+        }
+
+        var newPath = Path.Combine(currentDir.FullName, name);
+
+        isCreatingRepo = true;
+        try
+        {
+            await GitService.InitRepoAsync(newPath);
+        }
+        catch (Exception ex)
+        {
+            createRepoError = $"Could not initialize repository: {ex.Message}";
+            return;
+        }
+        finally
+        {
+            isCreatingRepo = false;
+        }
+
+        showCreateRepo = false;
+        newRepoName = "";
+        NavigateTo(newPath);
+        selectedPath = newPath;
     }
 
     private void Cancel() => MudDialog.Cancel();

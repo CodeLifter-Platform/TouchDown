@@ -186,6 +186,8 @@ else
         var parameters = new DialogParameters<FolderPickerDialog>
         {
             { x => x.IsGitMode, gitMode },
+            { x => x.AllowCreateFolder, !gitMode },
+            { x => x.AllowCreateRepo, gitMode },
             { x => x.InitialPath, Session.RepoPath }
         };
 

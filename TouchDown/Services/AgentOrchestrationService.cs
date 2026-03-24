@@ -19,7 +19,7 @@ public interface IAgentOrchestrationService
 public class AgentOrchestrationService : IAgentOrchestrationService
 {
     private readonly IDbContextFactory<TDDbContext> _dbFactory;
-    private readonly IClaudeStreamingService _claude;
+    private readonly IAgentProvider _provider;
     private readonly IGitWorktreeService _git;
     private readonly ISharedDriveContext _context;
     private readonly IPlanParserService _planParser;
@@ -29,7 +29,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
     public AgentOrchestrationService(
         IDbContextFactory<TDDbContext> dbFactory,
-        IClaudeStreamingService claude,
+        IAgentProvider provider,
         IGitWorktreeService git,
         ISharedDriveContext context,
         IPlanParserService planParser,
@@ -37,7 +37,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         ILogger<AgentOrchestrationService> logger)
     {
         _dbFactory = dbFactory;
-        _claude = claude;
+        _provider = provider;
         _git = git;
         _context = context;
         _planParser = planParser;
@@ -146,7 +146,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                 drive.HuddlePlan ?? drive.TaskDescription,
                 team,
                 drive.TaskDescription,
-                _claude,
+                _provider,
                 workDir,
                 ct);
 
@@ -261,9 +261,14 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             var fullPrompt = _context.BuildAgentContextPrompt(
                 drive.DriveId, member.Name, play.Description, priorOutputs);
 
-            // Run Claude with streaming, forwarding chunks to the UI
-            var result = await _claude.RunAsync(
-                new ClaudeRunOptions
+            // Stream provider output, forwarding chunks to the UI in real time
+            var fullText = new System.Text.StringBuilder();
+            var toolsUsed = new List<string>();
+            double? costUsd = null;
+            bool isError = false;
+
+            await foreach (var chunk in _provider.StreamAsync(
+                new AgentContext
                 {
                     ModelId = member.Model.ToModelId(),
                     SystemPrompt = member.SystemPrompt,
@@ -271,21 +276,35 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                     WorkingDirectory = workDir,
                     DangerouslySkipPermissions = true,
                     AllowedTools = GetToolsForRole(member.Role),
-                },
-                onChunk: async chunk =>
+                }, ct))
+            {
+                if (chunk.TextDelta != null)
                 {
-                    // Stream text chunks to the UI as live log entries
-                    if (chunk.TextDelta != null && chunk.TextDelta.Contains('\n'))
-                    {
+                    fullText.Append(chunk.TextDelta);
+                    if (chunk.TextDelta.Contains('\n'))
                         await SendLog(drive.DriveId, member.Name, chunk.TextDelta.Trim(), ct);
-                    }
+                }
 
-                    if (chunk.ToolName != null)
-                    {
-                        await SendLog(drive.DriveId, member.Name, $"Using tool: {chunk.ToolName}", ct);
-                    }
-                },
-                cancellationToken: ct);
+                if (chunk.ToolName != null)
+                {
+                    if (!toolsUsed.Contains(chunk.ToolName))
+                        toolsUsed.Add(chunk.ToolName);
+                    await SendLog(drive.DriveId, member.Name, $"Using tool: {chunk.ToolName}", ct);
+                }
+
+                if (chunk.CostUsd.HasValue) costUsd = chunk.CostUsd;
+                if (chunk.IsError) isError = true;
+                if (chunk.IsComplete && chunk.Result != null && fullText.Length == 0)
+                    fullText.Append(chunk.Result);
+            }
+
+            var result = new AgentResponse
+            {
+                FullText = fullText.ToString(),
+                IsError = isError,
+                CostUsd = costUsd,
+                ToolsUsed = toolsUsed,
+            };
 
             if (result.IsError)
             {

@@ -10,7 +10,7 @@ public interface IPlanParserService
         string huddleOutput,
         AgentTeam team,
         string taskDescription,
-        IClaudeStreamingService claude,
+        IAgentProvider provider,
         string? workingDirectory,
         CancellationToken ct = default);
 
@@ -42,7 +42,7 @@ public partial class PlanParserService : IPlanParserService
         string huddleOutput,
         AgentTeam team,
         string taskDescription,
-        IClaudeStreamingService claude,
+        IAgentProvider provider,
         string? workingDirectory,
         CancellationToken ct = default)
     {
@@ -95,12 +95,15 @@ public partial class PlanParserService : IPlanParserService
             - Respond ONLY with the JSON, no other text
             """;
 
-        var result = await claude.GetFullResponseAsync(
-            qb?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId(),
-            qb?.SystemPrompt ?? "You are the Quarterback. Produce structured plans.",
-            structuredPrompt,
-            workingDirectory,
-            ct);
+        var response = await provider.RunAsync(new AgentContext
+        {
+            ModelId = qb?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId(),
+            SystemPrompt = qb?.SystemPrompt ?? "You are the Quarterback. Produce structured plans.",
+            Prompt = structuredPrompt,
+            WorkingDirectory = workingDirectory,
+        }, ct);
+
+        var result = response.FullText;
 
         plan = TryExtractPlanJson(result);
         if (plan != null && plan.Assignments.Count > 0)

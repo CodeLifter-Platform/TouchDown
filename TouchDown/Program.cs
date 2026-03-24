@@ -35,8 +35,11 @@ builder.Services.AddHangfireServer();
 // Health checks
 builder.Services.AddSingleton<ClaudeHealthCheck>();
 builder.Services.AddSingleton<IClaudeHealthCheck>(sp => sp.GetRequiredService<ClaudeHealthCheck>());
+builder.Services.AddSingleton<CodexHealthCheck>();
+builder.Services.AddSingleton<ICodexHealthCheck>(sp => sp.GetRequiredService<CodexHealthCheck>());
 builder.Services.AddHealthChecks()
-    .AddCheck<ClaudeHealthCheck>("claude-code");
+    .AddCheck<ClaudeHealthCheck>("claude-code")
+    .AddCheck<CodexHealthCheck>("codex");
 
 // Area: Home/Index
 builder.Services.AddScoped<TD.Areas.Home.Index.IHomeIndexServiceDA, TD.Areas.Home.Index.HomeIndexServiceDA>();
@@ -60,7 +63,9 @@ builder.Services.AddScoped<TD.Areas.Drives.Monitor.IDrivesMonitorService, TD.Are
 builder.Services.AddScoped<TD.Areas.Drives.Monitor.DrivesMonitorPageVM>();
 
 // Application services
-builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>();
+builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>(); // kept for ClaudeCodeProvider
+builder.Services.AddAgentProvider<ClaudeCodeProvider>();                           // registers IAgentProvider + ClaudeCodeProvider
+builder.Services.AddAgentProvider<CodexProvider>();                                // registers IAgentProvider + CodexProvider
 builder.Services.AddSingleton<IGitWorktreeService, GitWorktreeService>();
 builder.Services.AddSingleton<ISharedDriveContext, SharedDriveContext>();
 builder.Services.AddSingleton<IPlanParserService, PlanParserService>();
@@ -95,6 +100,27 @@ using (var scope = app.Services.CreateScope())
     else
     {
         logger.LogError("Claude Code CLI not found! Install from https://docs.anthropic.com/en/docs/claude-code. Error: {Error}", status.Error);
+    }
+}
+
+// Run Codex health check on startup
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    var healthCheck = app.Services.GetRequiredService<ICodexHealthCheck>();
+    logger.LogInformation("Running Codex CLI health check...");
+    var status = await healthCheck.CheckAsync();
+
+    if (status.IsHealthy)
+    {
+        logger.LogInformation("Codex CLI is ready: v{Version} at {Path}", status.Version, status.CliPath);
+    }
+    else if (status.IsInstalled && !status.IsAuthenticated)
+    {
+        logger.LogWarning("Codex CLI is installed but NOT authenticated. Run 'codex auth' to log in. Error: {Error}", status.Error);
+    }
+    else
+    {
+        logger.LogWarning("Codex CLI not found — Codex provider will be unavailable. Install via 'npm i -g @openai/codex'. Error: {Error}", status.Error);
     }
 }
 
