@@ -4,8 +4,11 @@ using TD.Services;
 
 namespace TD.Areas.Drives.New;
 
+public record AvailableProvider(string ProviderId, string DisplayName);
+
 public interface IDrivesNewService
 {
+    Task<List<AvailableProvider>> GetAvailableProvidersAsync();
     Task<List<AgentTeam>> GetAvailableTeamsAsync();
     Task<AgentTeam> SaveCustomTeamAsync(AgentTeam team);
     Task<Drive> StartDriveAsync(AgentSession session);
@@ -24,13 +27,22 @@ public class DrivesNewService : IDrivesNewService
     private readonly IDrivesNewServiceDA _da;
     private readonly IAgentOrchestrationService _orchestration;
     private readonly IClaudeStreamingService _claude;
+    private readonly IAgentProviderRegistry _providerRegistry;
     private readonly Serilog.ILogger _log = Log.ForContext<DrivesNewService>();
 
-    public DrivesNewService(IDrivesNewServiceDA da, IAgentOrchestrationService orchestration, IClaudeStreamingService claude)
+    public DrivesNewService(IDrivesNewServiceDA da, IAgentOrchestrationService orchestration, IClaudeStreamingService claude, IAgentProviderRegistry providerRegistry)
     {
         _da = da;
         _orchestration = orchestration;
         _claude = claude;
+        _providerRegistry = providerRegistry;
+    }
+
+    public async Task<List<AvailableProvider>> GetAvailableProvidersAsync()
+    {
+        _log.Debug("Getting available providers");
+        var available = await _providerRegistry.GetAvailableAsync();
+        return available.Select(p => new AvailableProvider(p.ProviderId, p.DisplayName)).ToList();
     }
 
     public async Task<List<AgentTeam>> GetAvailableTeamsAsync()

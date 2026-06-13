@@ -53,4 +53,8 @@ public class Drive
 
     [MaxLength(10000)]
     public string? HuddlePlan { get; set; }
+
+    /// <summary>The agent provider used for this drive (e.g. "claude-code", "codex").</summary>
+    [MaxLength(50)]
+    public string? ProviderId { get; set; }
 }

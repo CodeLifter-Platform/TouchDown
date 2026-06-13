@@ -1,5 +1,6 @@
 @page "/drive/{DriveId}"
 @using Microsoft.AspNetCore.SignalR.Client
+@using System.Text.Json
 @using TD.MVVM.Components
 @using TD.Areas.Drives.Monitor.Components
 @inherits ViewComponentBase<DrivesMonitorPageVM>
@@ -36,11 +37,25 @@
 
     @if (VM.Drive != null)
     {
+        @* ── Phase banner (only while running) ── *@
+        @if (VM.Drive.Status == DriveStatus.InProgress)
+        {
+            <MudPaper Outlined="true" Class="mb-4 pa-3 d-flex align-center gap-3">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
+                <div>
+                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@VM.CurrentPhase</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Drive in progress…</MudText>
+                </div>
+            </MudPaper>
+        }
+
+        @* ── Agent status cards ── *@
         <MudGrid Class="mb-4">
             @foreach (var status in VM.AgentStatuses)
             {
+                var agentName = status.Key;
                 <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Outlined="true">
+                    <MudCard Outlined="true" Style="cursor: pointer;" @onclick="() => OpenTranscript(agentName)">
                         <MudCardContent Class="pa-3">
                             <div class="d-flex justify-space-between align-center mb-2">
                                 <MudText Typo="Typo.body2" Style="font-weight: 600;">@status.Key</MudText>
@@ -55,6 +70,12 @@
                 </MudItem>
             }
         </MudGrid>
+
+        @* ── Play board (visible once plays are assigned) ── *@
+        @if (VM.Plays.Count > 0)
+        {
+            <PlayBoard Plays="VM.Plays" />
+        }
 
         @if (VM.Drive.Status is DriveStatus.Touchdown or DriveStatus.Turnover)
         {
@@ -97,6 +118,7 @@
 @code {
     [Parameter] public string DriveId { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
 
     private HubConnection? hubConnection;
 
@@ -110,35 +132,48 @@
             .WithAutomaticReconnect()
             .Build();
 
-        hubConnection.On<dynamic>("ReceiveLog", (log) =>
+        hubConnection.On<JsonElement>("ReceiveLog", (log) =>
         {
             VM.AddLog(new LogEntry
             {
                 Timestamp = DateTime.UtcNow,
-                AgentName = (string)(log.AgentName ?? "System"),
-                Message = (string)log.Message,
-                Level = (string)(log.Level ?? "Info")
+                AgentName = log.TryGetProperty("AgentName", out var an) ? an.GetString() ?? "System" : "System",
+                Message = log.TryGetProperty("Message", out var msg) ? msg.GetString() ?? "" : "",
+                Level = log.TryGetProperty("Level", out var lvl) ? lvl.GetString() ?? "Info" : "Info"
             });
             InvokeAsync(StateHasChanged);
         });
 
-        hubConnection.On<dynamic>("AgentStatusUpdate", (update) =>
+        hubConnection.On<JsonElement>("AgentStatusUpdate", (update) =>
         {
-            VM.UpdateAgentStatus(
-                (string)update.AgentName,
-                (string)update.Status,
-                (int)(update.ProgressPercent ?? 0));
+            var agentName = update.TryGetProperty("AgentName", out var an) ? an.GetString() ?? "" : "";
+            var status = update.TryGetProperty("Status", out var s) ? s.GetString() ?? "" : "";
+            var progress = update.TryGetProperty("ProgressPercent", out var p) ? p.GetInt32() : 0;
+            VM.UpdateAgentStatus(agentName, status, progress);
             InvokeAsync(StateHasChanged);
         });
 
-        hubConnection.On<dynamic>("DriveCompleted", (result) =>
+        hubConnection.On<JsonElement>("DriveCompleted", (result) =>
         {
-            VM.MarkDriveCompleted((string)result.Status);
+            var status = result.TryGetProperty("Status", out var s) ? s.GetString() ?? "" : "";
+            VM.MarkDriveCompleted(status);
             InvokeAsync(StateHasChanged);
         });
 
         await hubConnection.StartAsync();
         await hubConnection.InvokeAsync("JoinDrive", DriveId);
+    }
+
+    private async Task OpenTranscript(string agentName)
+    {
+        var agentPlays = VM.Plays.Where(p => p.AgentName == agentName).ToList();
+        var parameters = new DialogParameters<AgentTranscriptDialog>
+        {
+            { x => x.AgentName, agentName },
+            { x => x.Plays, agentPlays }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<AgentTranscriptDialog>(agentName, parameters, options);
     }
 
     public async ValueTask DisposeAsync()

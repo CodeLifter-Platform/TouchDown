@@ -19,7 +19,7 @@ public interface IAgentOrchestrationService
 public class AgentOrchestrationService : IAgentOrchestrationService
 {
     private readonly IDbContextFactory<TDDbContext> _dbFactory;
-    private readonly IAgentProvider _provider;
+    private readonly IAgentProviderRegistry _providerRegistry;
     private readonly IGitWorktreeService _git;
     private readonly ISharedDriveContext _context;
     private readonly IPlanParserService _planParser;
@@ -29,7 +29,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
     public AgentOrchestrationService(
         IDbContextFactory<TDDbContext> dbFactory,
-        IAgentProvider provider,
+        IAgentProviderRegistry providerRegistry,
         IGitWorktreeService git,
         ISharedDriveContext context,
         IPlanParserService planParser,
@@ -37,7 +37,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         ILogger<AgentOrchestrationService> logger)
     {
         _dbFactory = dbFactory;
-        _provider = provider;
+        _providerRegistry = providerRegistry;
         _git = git;
         _context = context;
         _planParser = planParser;
@@ -63,6 +63,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             PrBranchName = session.PrBranchName,
             AgentTeamId = session.Team.Id,
             HuddlePlan = session.Drive.HuddlePlan,
+            ProviderId = session.ProviderId,
             Status = DriveStatus.InProgress
         };
 
@@ -132,7 +133,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     {
         try
         {
+            // Resolve the provider selected by the user
+            var provider = !string.IsNullOrEmpty(drive.ProviderId)
+                ? _providerRegistry.GetById(drive.ProviderId)
+                : (await _providerRegistry.GetAvailableAsync(ct)).FirstOrDefault()
+                  ?? throw new InvalidOperationException("No agent providers are available on this machine.");
+
+            _logger.LogInformation("Drive {DriveId} using provider: {Provider}", drive.DriveId, provider.DisplayName);
+
             // Phase 0: Prepare workspace
+            await SendPhaseChanged(drive.DriveId, "Preparing Workspace", ct);
             var workDir = await PrepareWorkspaceAsync(drive, ct);
             await _context.InitializeAsync(drive.DriveId, workDir, ct);
 
@@ -140,13 +150,14 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             await SendLog(drive.DriveId, "System", $"Team: {team.Name} ({team.Members.Count} agents)", ct);
 
             // Phase 1: Parse the Huddle plan into structured assignments
+            await SendPhaseChanged(drive.DriveId, "Quarterback Planning", ct);
             await SendLog(drive.DriveId, "Quarterback", "Parsing the Huddle plan into structured assignments...", ct);
 
             var plan = await _planParser.ParsePlanFromHuddleAsync(
                 drive.HuddlePlan ?? drive.TaskDescription,
                 team,
                 drive.TaskDescription,
-                _provider,
+                provider,
                 workDir,
                 ct);
 
@@ -164,6 +175,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             // Phase 2: Convert plan to plays and save to DB
             var plays = _planParser.ConvertPlanToPlays(plan, team);
             await SavePlays(drive.Id, plays, ct);
+            await SendPlaysReady(drive.DriveId, plays, ct);
 
             foreach (var play in plays)
             {
@@ -172,7 +184,8 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             }
 
             // Phase 3: Execute plays respecting dependencies
-            await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, ct);
+            await SendPhaseChanged(drive.DriveId, "Executing Plays", ct);
+            await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, provider, ct);
 
             // Phase 4: Mark Touchdown
             await MarkDriveStatus(drive, DriveStatus.Touchdown, ct);
@@ -205,7 +218,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     /// </summary>
     private async Task ExecutePlaysWithDependencies(
         Drive drive, List<Play> plays, QuarterbackPlan plan, AgentTeam team,
-        string workDir, CancellationToken ct)
+        string workDir, IAgentProvider provider, CancellationToken ct)
     {
         using var semaphore = new SemaphoreSlim(drive.MaxParallelism);
         var completedIndices = new ConcurrentBag<int>();
@@ -221,13 +234,15 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         // Group by waves: wave 0 = no deps, wave 1 = depends on wave 0, etc.
         var waves = BuildExecutionWaves(plays.Count, dependencyMap);
 
-        foreach (var wave in waves)
+        for (int waveIndex = 0; waveIndex < waves.Count; waveIndex++)
         {
+            var wave = waves[waveIndex];
+            await SendPhaseChanged(drive.DriveId, $"Executing Wave {waveIndex + 1} of {waves.Count}", ct);
             await SendLog(drive.DriveId, "System",
-                $"Executing wave: {string.Join(", ", wave.Select(i => plays[i].AssignedMember?.Name ?? $"Play {i}"))}", ct);
+                $"Executing wave {waveIndex + 1}/{waves.Count}: {string.Join(", ", wave.Select(i => plays[i].AssignedMember?.Name ?? $"Play {i}"))}", ct);
 
             var waveTasks = wave.Select(playIndex =>
-                RunPlayWithContextAsync(drive, plays[playIndex], playIndex, workDir, semaphore, playResults, ct));
+                RunPlayWithContextAsync(drive, plays[playIndex], playIndex, workDir, semaphore, playResults, provider, ct));
 
             await Task.WhenAll(waveTasks);
 
@@ -239,7 +254,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     private async Task RunPlayWithContextAsync(
         Drive drive, Play play, int playIndex, string workDir,
         SemaphoreSlim semaphore, ConcurrentDictionary<int, PlayResult> results,
-        CancellationToken ct)
+        IAgentProvider provider, CancellationToken ct)
     {
         await semaphore.WaitAsync(ct);
         try
@@ -250,6 +265,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
             play.Status = PlayStatus.InProgress;
             play.StartedAt = DateTime.UtcNow;
+            await SendPlayStatusUpdate(drive.DriveId, play, ct);
 
             // Build context-aware prompt: include plan + prior outputs for validators
             Dictionary<string, string>? priorOutputs = null;
@@ -267,7 +283,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             double? costUsd = null;
             bool isError = false;
 
-            await foreach (var chunk in _provider.StreamAsync(
+            await foreach (var chunk in provider.StreamAsync(
                 new AgentContext
                 {
                     ModelId = member.Model.ToModelId(),
@@ -313,6 +329,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                 play.CompletedAt = DateTime.UtcNow;
                 await SendLog(drive.DriveId, member.Name, $"FAILED: {TruncateForLog(result.FullText)}", ct);
                 await UpdateAgentStatus(drive.DriveId, member.Name, "Failed", 100, ct);
+                await SendPlayStatusUpdate(drive.DriveId, play, ct);
                 await SavePlayStatus(play, ct);
                 throw new InvalidOperationException($"Agent {member.Name} failed: {result.FullText}");
             }
@@ -330,6 +347,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             var toolInfo = result.ToolsUsed.Count > 0 ? $" [tools: {string.Join(", ", result.ToolsUsed)}]" : "";
             await SendLog(drive.DriveId, member.Name, $"Completed{costInfo}{toolInfo}", ct);
             await UpdateAgentStatus(drive.DriveId, member.Name, "Completed", 100, ct);
+            await SendPlayStatusUpdate(drive.DriveId, play, ct);
             await SavePlayStatus(play, ct);
         }
         catch (OperationCanceledException)
@@ -401,14 +419,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             WorkspaceMode.PrWorktree when !string.IsNullOrEmpty(drive.RepoPath) =>
                 await _git.CreateWorktreeAsync(drive.RepoPath, drive.PrBranchName ?? $"touchdown/drive-{drive.DriveId}", ct),
             WorkspaceMode.FreshFolder =>
-                CreateFreshFolder(drive.WorkspacePath ?? Path.Combine(Path.GetTempPath(), "touchdown", drive.DriveId)),
+                await CreateFreshFolderAsync(drive.WorkspacePath ?? Path.Combine(Path.GetTempPath(), "touchdown", drive.DriveId), ct),
             _ => drive.RepoPath ?? Environment.CurrentDirectory
         };
     }
 
-    private static string CreateFreshFolder(string path)
+    private async Task<string> CreateFreshFolderAsync(string path, CancellationToken ct)
     {
         Directory.CreateDirectory(path);
+        if (!Directory.Exists(Path.Combine(path, ".git")))
+            await _git.InitRepoAsync(path, ct);
         return path;
     }
 
@@ -460,6 +480,39 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     {
         await _hub.Clients.Group(driveId).SendAsync("AgentStatusUpdate",
             new { AgentName = agentName, Status = status, ProgressPercent = progress }, ct);
+    }
+
+    private async Task SendPhaseChanged(string driveId, string phase, CancellationToken ct)
+    {
+        await _hub.Clients.Group(driveId).SendAsync("DrivePhaseChanged",
+            new { DriveId = driveId, Phase = phase }, ct);
+    }
+
+    private async Task SendPlaysReady(string driveId, List<Play> plays, CancellationToken ct)
+    {
+        var dtos = plays.Select(p => new
+        {
+            p.Id,
+            AgentName = p.AssignedMember?.Name ?? "Unknown",
+            p.Description,
+            Status = p.Status.ToString(),
+            p.OrderIndex
+        }).ToList();
+
+        await _hub.Clients.Group(driveId).SendAsync("PlaysReady",
+            new { DriveId = driveId, Plays = dtos }, ct);
+    }
+
+    private async Task SendPlayStatusUpdate(string driveId, Play play, CancellationToken ct)
+    {
+        await _hub.Clients.Group(driveId).SendAsync("PlayStatusUpdate", new
+        {
+            PlayId = play.Id,
+            AgentName = play.AssignedMember?.Name ?? "Unknown",
+            Status = play.Status.ToString(),
+            play.StartedAt,
+            play.CompletedAt
+        }, ct);
     }
 
     private async Task SendLog(string driveId, string agentName, string message, CancellationToken ct)

@@ -1,0 +1,81 @@
+@using TD.Services.Telemetry
+
+@if (IsVisible)
+{
+    <div class="telemetry-consent-overlay">
+        <MudPaper Class="telemetry-consent-card" Elevation="8">
+
+            @if (_isPolicyChange)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                    Our data policy has changed. Please review and confirm your preference.
+                </MudAlert>
+            }
+
+            <div class="d-flex align-center gap-3 mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.PrivacyTip" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h5" GutterBottom="false">Help improve TouchDown</MudText>
+            </div>
+
+            <MudText Typo="Typo.body1" Class="mb-4">
+                TouchDown is in beta. With your permission, we collect anonymous
+                usage data to understand how the tool is being used and where it can improve.
+            </MudText>
+
+            <MudGrid Spacing="3" Class="mb-4">
+                <MudItem xs="12" sm="6">
+                    <div class="d-flex align-center mb-2 consent-section-label">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" Class="consent-section-icon" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Success">We collect:</MudText>
+                    </div>
+                    <MudList T="string" Dense="true">
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Which wizard steps you complete</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Whether Drives succeed or fail, and the type of error if they fail</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">How long Drives take and how many Huddle turns happen</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Unhandled errors (type only, never your code)</MudListItem>
+                    </MudList>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <div class="d-flex align-center mb-2 consent-section-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Block" Color="Color.Error" Size="Size.Small" Class="consent-section-icon" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Error">We never collect:</MudText>
+                    </div>
+                    <MudList T="string" Dense="true">
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Repo names, branch names, or file paths</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Code content or task descriptions</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Agent output or any personal data</MudListItem>
+                    </MudList>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4 d-block">
+                You can change this at any time in Settings.
+            </MudText>
+
+            <MudDivider Class="mb-4" />
+
+            <div class="d-flex justify-end gap-3">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           OnClick="DeclineAsync"
+                           Disabled="@_saving">
+                    Decline
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           OnClick="AcceptAsync"
+                           Disabled="@_saving">
+                    @if (_saving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Accept
+                </MudButton>
+            </div>
+
+        </MudPaper>
+    </div>
+}
+

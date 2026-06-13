@@ -12,11 +12,16 @@ public interface IDrivesMonitorPageVM
     Drive? Drive { get; }
     Dictionary<string, AgentStatusInfo> AgentStatuses { get; }
     List<LogEntry> Logs { get; }
+    List<PlaySummaryVM> Plays { get; }
+    string CurrentPhase { get; }
     string? DriveId { get; set; }
     Task LoadDriveAsync(string driveId);
     void AddLog(LogEntry entry);
     void UpdateAgentStatus(string agentName, string status, int progress);
     void MarkDriveCompleted(string status);
+    void SetPhase(string phase);
+    void SetPlays(List<PlaySummaryVM> plays);
+    void UpdatePlayStatus(int playId, string status, DateTime? startedAt, DateTime? completedAt);
     Task CancelDrive();
 }
 
@@ -46,6 +51,12 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
     [ObservableProperty]
     private List<LogEntry> _logs = [];
 
+    [ObservableProperty]
+    private List<PlaySummaryVM> _plays = [];
+
+    [ObservableProperty]
+    private string _currentPhase = "Starting";
+
     public string? DriveId { get; set; }
 
     public async Task LoadDriveAsync(string driveId)
@@ -74,6 +85,23 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
                     Level = l.Level.ToString()
                 }).ToList();
             }
+
+            if (Drive?.Plays is { Count: > 0 })
+            {
+                Plays = Drive.Plays
+                    .OrderBy(p => p.OrderIndex)
+                    .Select(p => new PlaySummaryVM
+                    {
+                        Id = p.Id,
+                        AgentName = p.AssignedMember?.Name ?? "Unknown",
+                        Description = p.Description,
+                        Status = p.Status,
+                        StartedAt = p.StartedAt,
+                        CompletedAt = p.CompletedAt,
+                        OrderIndex = p.OrderIndex,
+                        Output = p.Output
+                    }).ToList();
+            }
         }
         catch (Exception ex)
         {
@@ -97,6 +125,18 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
             };
             AgentStatuses = updated;
         }
+    }
+
+    public void SetPhase(string phase) => CurrentPhase = phase;
+
+    public void SetPlays(List<PlaySummaryVM> plays) => Plays = plays;
+
+    public void UpdatePlayStatus(int playId, string status, DateTime? startedAt, DateTime? completedAt)
+    {
+        var playStatus = Enum.TryParse<PlayStatus>(status, out var s) ? s : PlayStatus.Pending;
+        Plays = Plays.Select(p => p.Id == playId
+            ? p with { Status = playStatus, StartedAt = startedAt, CompletedAt = completedAt }
+            : p).ToList();
     }
 
     public void MarkDriveCompleted(string status)
@@ -157,4 +197,19 @@ public class LogEntry
     public string AgentName { get; set; } = "";
     public string Message { get; set; } = "";
     public string Level { get; set; } = "Info";
+}
+
+public record PlaySummaryVM
+{
+    public int Id { get; init; }
+    public string AgentName { get; init; } = "";
+    public string Description { get; init; } = "";
+    public PlayStatus Status { get; init; } = PlayStatus.Pending;
+    public DateTime? StartedAt { get; init; }
+    public DateTime? CompletedAt { get; init; }
+    public int OrderIndex { get; init; }
+    public string? Output { get; init; }
+
+    public TimeSpan? Duration =>
+        StartedAt.HasValue && CompletedAt.HasValue ? CompletedAt - StartedAt : null;
 }

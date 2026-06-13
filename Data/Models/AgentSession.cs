@@ -14,6 +14,9 @@ public class AgentSession
     public string? PrBranchName { get; set; }
     public string? TaskDescription { get; set; }
     public int MaxParallelism { get; set; } = 2;
+
+    /// <summary>The selected agent provider ID (e.g. "claude-code", "codex").</summary>
+    public string? ProviderId { get; set; }
 }
 
 public class HuddleMessage

@@ -16,6 +16,7 @@ public interface IDrivesNewPageVM
     string MissingStepsText { get; }
     string SourceDisplayName { get; }
     string ModeDisplayName { get; }
+    bool WorkspaceNeedsGitInit { get; }
     void RefreshCanStart();
     void StartHuddle();
     Task<string?> SnapDirectly();
@@ -64,6 +65,19 @@ public partial class DrivesNewPageVM : VM, IDrivesNewPageVM
             if (Session.Team == null) missing.Add("team");
             if (string.IsNullOrWhiteSpace(Session.TaskDescription)) missing.Add("task description");
             return $"Complete the setup first — missing: {string.Join(", ", missing)}.";
+        }
+    }
+
+    public bool WorkspaceNeedsGitInit
+    {
+        get
+        {
+            if (Session.WorkspaceMode != WorkspaceMode.FreshFolder)
+                return false;
+            var path = Session.RepoPath;
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return false;
+            return !Directory.Exists(Path.Combine(path, ".git"));
         }
     }
 

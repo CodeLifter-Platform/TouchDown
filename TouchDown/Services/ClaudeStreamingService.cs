@@ -164,6 +164,10 @@ public class ClaudeStreamingService : IClaudeStreamingService
         {
             if (chunk.TextDelta != null)
                 yield return chunk.TextDelta;
+            else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
+                // Surface CLI failures instead of swallowing them — otherwise the
+                // huddle just shows an empty bubble and the QB looks like it never started.
+                yield return $"\n\n⚠️ {chunk.Result}";
         }
     }
 
@@ -187,6 +191,11 @@ public class ClaudeStreamingService : IClaudeStreamingService
 
     private static ClaudeStreamChunk? MapEventToChunk(ClaudeStreamEvent evt)
     {
+        // With --include-partial-messages the real event is nested inside a
+        // "stream_event" envelope. Unwrap so the cases below match as before.
+        if (evt.Type == "stream_event" && evt.Event != null)
+            evt = evt.Event;
+
         return evt.Type switch
         {
             // Text streaming
@@ -220,7 +229,14 @@ public class ClaudeStreamingService : IClaudeStreamingService
 
     private Process CreateProcess(ClaudeRunOptions options)
     {
-        var args = new List<string> { "--print", "--output-format", "stream-json", "--model", options.ModelId };
+        var args = new List<string>
+        {
+            "--print",
+            "--verbose",                  // CLI requires this when --print is combined with --output-format stream-json
+            "--include-partial-messages", // emit content_block_delta events so we can stream text token-by-token
+            "--output-format", "stream-json",
+            "--model", options.ModelId
+        };
 
         if (!string.IsNullOrEmpty(options.SystemPrompt))
         {

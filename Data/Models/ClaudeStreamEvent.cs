@@ -18,6 +18,13 @@ public class ClaudeStreamEvent
     [JsonPropertyName("session_id")]
     public string? SessionId { get; set; }
 
+    // --- partial-message envelope ---
+    // With --include-partial-messages the CLI wraps fine-grained events
+    // (content_block_delta, content_block_start, …) inside a "stream_event"
+    // object under this "event" property. Unwrap before mapping.
+    [JsonPropertyName("event")]
+    public ClaudeStreamEvent? Event { get; set; }
+
     // --- assistant message chunks ---
     [JsonPropertyName("content_block")]
     public ContentBlock? ContentBlock { get; set; }

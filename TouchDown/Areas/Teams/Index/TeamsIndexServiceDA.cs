@@ -8,6 +8,7 @@ namespace TD.Areas.Teams.Index;
 public interface ITeamsIndexServiceDA
 {
     Task<List<AgentTeam>> GetAllTeamsAsync();
+    Task UpdateMemberPromptAsync(int memberId, string systemPrompt);
 }
 
 public class TeamsIndexServiceDAException : Exception
@@ -42,6 +43,24 @@ public class TeamsIndexServiceDA : ITeamsIndexServiceDA
         {
             _log.Error(ex, "Failed to fetch agent teams");
             throw new TeamsIndexServiceDAException("Failed to fetch agent teams", ex);
+        }
+    }
+
+    public async Task UpdateMemberPromptAsync(int memberId, string systemPrompt)
+    {
+        _log.Debug("Updating system prompt for member {MemberId}", memberId);
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var member = await db.AgentMembers.FindAsync(memberId)
+                ?? throw new TeamsIndexServiceDAException($"Agent member {memberId} not found");
+            member.SystemPrompt = systemPrompt;
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is not TeamsIndexServiceDAException)
+        {
+            _log.Error(ex, "Failed to update system prompt for member {MemberId}", memberId);
+            throw new TeamsIndexServiceDAException($"Failed to update system prompt for member {memberId}", ex);
         }
     }
 }

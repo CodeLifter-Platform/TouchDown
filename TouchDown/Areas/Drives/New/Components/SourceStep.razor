@@ -1,9 +1,36 @@
 @using TD.Areas.Shared
+@using TD.Areas.Drives.New
 
 <MudText Typo="Typo.h6" Class="mb-1">Source Selection</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-    Choose where your code lives, which branch to start from, and how agents should work on it.
+    Choose your agent provider, where your code lives, which branch to start from, and how agents should work on it.
 </MudText>
+
+@* ───── Agent Provider ───── *@
+<MudText Typo="Typo.subtitle2" Class="mb-2">Agent Provider</MudText>
+@if (loadingProviders)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+else if (availableProviders.Count == 0)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined" Class="mb-4"
+              Icon="@Icons.Material.Filled.ErrorOutline">
+        No agent providers available. Install and authenticate Claude Code or Codex CLI.
+    </MudAlert>
+}
+else
+{
+    <MudToggleGroup T="string" Value="Session.ProviderId" ValueChanged="SetProvider"
+                    Color="Color.Primary" CheckMark="true" Class="mb-4">
+        @foreach (var provider in availableProviders)
+        {
+            <MudToggleItem T="string" Value="@provider.ProviderId" Text="@provider.DisplayName" />
+        }
+    </MudToggleGroup>
+}
+
+<MudDivider Class="mb-4" />
 
 <MudToggleGroup T="SourceType" Value="Session.SourceType" ValueChanged="SetSourceType"
                 Color="Color.Primary" CheckMark="true" Class="mb-4">
@@ -154,7 +181,10 @@ else
 
     [Inject] private IGitWorktreeService GitService { get; set; } = null!;
     [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private IDrivesNewService DriveService { get; set; } = null!;
 
+    private List<AvailableProvider> availableProviders = [];
+    private bool loadingProviders = true;
     private List<string> branches = [];
     private string? currentBranch;
     private bool isDetectingGit;
@@ -162,6 +192,30 @@ else
     private string defaultPrBranch => $"touchdown/{Session.Branch ?? "main"}-drive";
 
     private CancellationTokenSource? _detectCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loadingProviders = true;
+        try
+        {
+            availableProviders = await DriveService.GetAvailableProvidersAsync();
+            if (string.IsNullOrEmpty(Session.ProviderId) && availableProviders.Count > 0)
+            {
+                Session.ProviderId = availableProviders[0].ProviderId;
+                await OnChanged.InvokeAsync();
+            }
+        }
+        finally
+        {
+            loadingProviders = false;
+        }
+    }
+
+    private async Task SetProvider(string providerId)
+    {
+        Session.ProviderId = providerId;
+        await OnChanged.InvokeAsync();
+    }
 
     private async Task SetSourceType(SourceType type)
     {

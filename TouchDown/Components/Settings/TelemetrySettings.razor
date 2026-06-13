@@ -1,0 +1,93 @@
+@using TD.Services
+@using TD.Services.Telemetry
+@using TD.Components.Consent
+@inject IUserPreferencesService Prefs
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.h6" GutterBottom="true">
+        <MudIcon Icon="@Icons.Material.Filled.Analytics" Class="mr-2" />
+        Anonymous Usage Telemetry
+    </MudText>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Help improve TouchDown by sharing anonymous usage data.
+        No code, paths, task text, or agent output is ever collected.
+    </MudText>
+
+    <div class="d-flex align-center gap-4 mb-3">
+        <MudSwitch T="bool"
+                   Value="@Prefs.Current.TelemetryConsented"
+                   ValueChanged="OnToggleChanged"
+                   Color="Color.Primary"
+                   Label="Enable anonymous usage telemetry" />
+    </div>
+
+    @if (Prefs.Current.HasRespondedToTelemetryConsent && Prefs.Current.ConsentTimestamp.HasValue)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 d-block">
+            @(Prefs.Current.TelemetryConsented ? "Consent granted" : "Consent declined")
+            on @Prefs.Current.ConsentTimestamp.Value.LocalDateTime.ToString("MMM d, yyyy 'at' h:mm tt")
+            &middot; Policy version @Prefs.Current.ConsentVersion
+        </MudText>
+    }
+
+    @if (Prefs.Current.TelemetryConsented)
+    {
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Warning"
+                   Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.RemoveCircleOutline"
+                   OnClick="WithdrawConsentAsync"
+                   Class="mt-2">
+            Withdraw consent
+        </MudButton>
+    }
+
+    @if (_showConsentModal)
+    {
+        <TelemetryConsentModal OnResolved="OnModalResolved" />
+    }
+</MudPaper>
+
+@code {
+    private bool _showConsentModal;
+
+    private async Task OnToggleChanged(bool value)
+    {
+        if (value && !Prefs.Current.HasRespondedToTelemetryConsent)
+        {
+            // First-time enable — show the full modal instead of silently enabling
+            _showConsentModal = true;
+        }
+        else
+        {
+            Prefs.Current.TelemetryConsented = value;
+            if (!value)
+            {
+                Prefs.Current.ConsentTimestamp = DateTimeOffset.UtcNow;
+                Prefs.Current.ConsentVersion = TelemetryConsentModal.TelemetryPolicyVersion;
+                Prefs.Current.HasRespondedToTelemetryConsent = true;
+            }
+            await Prefs.SaveAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task WithdrawConsentAsync()
+    {
+        Prefs.Current.TelemetryConsented = false;
+        Prefs.Current.ConsentTimestamp = DateTimeOffset.UtcNow;
+        Prefs.Current.ConsentVersion = TelemetryConsentModal.TelemetryPolicyVersion;
+        Prefs.Current.HasRespondedToTelemetryConsent = true;
+        await Prefs.SaveAsync();
+        StateHasChanged();
+    }
+
+    private Task OnModalResolved()
+    {
+        _showConsentModal = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}
+

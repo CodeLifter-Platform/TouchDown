@@ -49,7 +49,7 @@ public class TDDbContext : DbContext
         modelBuilder.Entity<AgentTeam>().HasData(team);
 
         modelBuilder.Entity<AgentMember>().HasData(
-            new { Id = 1, Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = "You are the Quarterback — the team leader. You read the task, create a structured plan, delegate assignments to your team, and coordinate the drive to completion.", AgentTeamId = 1 },
+            new { Id = 1, Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = AgentDefaults.QuarterbackSystemPrompt, AgentTeamId = 1 },
             new { Id = 2, Name = "Left Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Left Guard — a core implementer. You receive your assignment from the Quarterback and execute it with precision.", AgentTeamId = 1 },
             new { Id = 3, Name = "Right Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Right Guard — a parallel implementer. You work alongside the Left Guard on your assigned portion.", AgentTeamId = 1 },
             new { Id = 4, Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Guards before it merges.", AgentTeamId = 1 },

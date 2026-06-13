@@ -1,0 +1,98 @@
+@using TD.Models
+@using TD.Areas.Drives.Monitor
+
+<MudPaper Outlined="true" Class="mt-4">
+    <MudToolBar Dense="true">
+        <MudIcon Icon="@Icons.Material.Filled.ListAlt" Class="mr-2" Size="Size.Small" />
+        <MudText Typo="Typo.subtitle2">Play Board</MudText>
+        <MudSpacer />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            @Plays.Count(p => p.Status == PlayStatus.Completed) of @Plays.Count completed
+        </MudText>
+    </MudToolBar>
+    <MudDivider />
+
+    <div class="pa-2">
+        @foreach (var play in Plays.OrderBy(p => p.OrderIndex))
+        {
+            <div class="d-flex align-center gap-2 py-1 px-1 play-board-row @GetRowClass(play.Status)">
+
+                @* Status icon / spinner *@
+                <div style="width: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                    @if (play.Status == PlayStatus.InProgress)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Info"
+                                             Style="width: 16px; height: 16px;" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@GetStatusIcon(play.Status)"
+                                 Size="Size.Small"
+                                 Color="@GetStatusColor(play.Status)" />
+                    }
+                </div>
+
+                @* Agent name *@
+                <MudText Typo="Typo.caption"
+                         Style="min-width: 150px; max-width: 150px; font-weight: 600; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @play.AgentName
+                </MudText>
+
+                @* Description *@
+                <MudText Typo="Typo.caption" Class="flex-grow-1"
+                         Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @Truncate(play.Description, 140)
+                </MudText>
+
+                @* Duration / running indicator *@
+                <div style="min-width: 64px; text-align: right; flex-shrink: 0;">
+                    @if (play.Status == PlayStatus.InProgress)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Info">running…</MudText>
+                    }
+                    else if (play.Duration.HasValue)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatDuration(play.Duration.Value)</MudText>
+                    }
+                </div>
+
+            </div>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public List<PlaySummaryVM> Plays { get; set; } = [];
+
+    private static string GetStatusIcon(PlayStatus status) => status switch
+    {
+        PlayStatus.Completed => Icons.Material.Filled.CheckCircle,
+        PlayStatus.Failed    => Icons.Material.Filled.Cancel,
+        PlayStatus.Skipped   => Icons.Material.Filled.SkipNext,
+        _                    => Icons.Material.Outlined.RadioButtonUnchecked
+    };
+
+    private static Color GetStatusColor(PlayStatus status) => status switch
+    {
+        PlayStatus.Completed  => Color.Success,
+        PlayStatus.Failed     => Color.Error,
+        PlayStatus.Skipped    => Color.Warning,
+        PlayStatus.InProgress => Color.Info,
+        _                     => Color.Default
+    };
+
+    private static string GetRowClass(PlayStatus status) => status switch
+    {
+        PlayStatus.InProgress => "play-board-row--running",
+        PlayStatus.Completed  => "play-board-row--done",
+        PlayStatus.Failed     => "play-board-row--failed",
+        _                     => ""
+    };
+
+    private static string Truncate(string text, int max) =>
+        text.Length > max ? text[..max] + "…" : text;
+
+    private static string FormatDuration(TimeSpan d) =>
+        d.TotalMinutes >= 1 ? $"{(int)d.TotalMinutes}m {d.Seconds}s" : $"{d.Seconds}s";
+}
+

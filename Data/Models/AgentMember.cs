@@ -15,7 +15,7 @@ public class AgentMember
 
     public bool IsLeader => Role == AgentRole.Leader;
 
-    [MaxLength(500)]
+    [MaxLength(4000)]
     public string? SystemPrompt { get; set; }
 
     public int AgentTeamId { get; set; }

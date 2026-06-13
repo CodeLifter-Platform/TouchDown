@@ -56,7 +56,36 @@
                                             </MudChip>
                                         </td>
                                         <td><MudText Typo="Typo.body2">@member.Model.ToDisplayName()</MudText></td>
-                                        <td><MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-style: italic;">@member.SystemPrompt</MudText></td>
+                                        <td style="min-width: 340px;">
+                                            @if (VM.EditingMemberId == member.Id)
+                                            {
+                                                <MudTextField @bind-Value="VM.EditBuffer" Variant="Variant.Outlined"
+                                                              Lines="6" MaxLength="4000"
+                                                              Immediate="true" Class="mb-2" />
+                                                <div class="d-flex justify-end gap-2">
+                                                    <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                               OnClick="VM.CancelEdit" Disabled="@VM.IsSaving">
+                                                        Cancel
+                                                    </MudButton>
+                                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                                               StartIcon="@Icons.Material.Filled.Save" Disabled="@VM.IsSaving"
+                                                               OnClick="() => VM.SaveEditCommand.ExecuteAsync(member)">
+                                                        @(VM.IsSaving ? "Saving…" : "Save")
+                                                    </MudButton>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="d-flex align-start gap-1">
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                                             Style="font-style: italic; white-space: pre-wrap;">@member.SystemPrompt</MudText>
+                                                    <MudTooltip Text="Edit prompt">
+                                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                                       OnClick="() => VM.BeginEdit(member)" />
+                                                    </MudTooltip>
+                                                </div>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                             </tbody>

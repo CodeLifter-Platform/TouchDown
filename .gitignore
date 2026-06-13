@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Language-server / build cache artifacts
+*.lscache
+
 # User-specific files
 *.rsuser
 *.suo

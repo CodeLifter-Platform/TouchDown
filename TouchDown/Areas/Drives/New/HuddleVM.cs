@@ -59,7 +59,7 @@ public partial class HuddleVM : VM, IHuddleVM
         var leader = session.Team?.GetLeader();
         if (leader != null)
         {
-            Messages = [new HuddleMessage { Role = "user", Content = $"Here's the play: {session.TaskDescription}" }];
+            Messages = [new HuddleMessage { Role = "user", Content = session.TaskDescription ?? "" }];
             await GetQbResponse();
         }
     }
@@ -81,8 +81,17 @@ public partial class HuddleVM : VM, IHuddleVM
         _log.Information("Snapping the ball from huddle");
         try
         {
-            Session.Drive.HuddlePlan = string.Join("\n---\n",
-                Messages.Where(m => m.Role == "quarterback").Select(m => m.Content));
+            // Store the last QB message as the primary plan (should contain the final playbook),
+            // with the full conversation as context
+            var lastQbMessage = Messages.LastOrDefault(m => m.Role == "quarterback")?.Content ?? "";
+            var fullConversation = string.Join("\n\n---\n\n",
+                Messages.Select(m =>
+                {
+                    var role = m.Role == "user" ? "Head Coach" : "Quarterback";
+                    return $"**{role}:**\n{m.Content}";
+                }));
+
+            Session.Drive.HuddlePlan = $"{fullConversation}\n\n===== FINAL PLAYBOOK =====\n\n{lastQbMessage}";
             var drive = await _service.StartDriveAsync(Session);
             return drive.DriveId;
         }
@@ -106,12 +115,24 @@ public partial class HuddleVM : VM, IHuddleVM
 
         try
         {
-            var context = string.Join("\n", Messages.Select(m => $"{m.Role}: {m.Content}"));
-            var prompt = $"Review this conversation and provide your analysis, plan, and task breakdown:\n\n{context}";
+            // The QB's definition is the leader's editable SystemPrompt (Teams page).
+            // Fall back to the shared default only if a team somehow has none.
+            var systemPrompt = string.IsNullOrWhiteSpace(leader.SystemPrompt)
+                ? AgentDefaults.QuarterbackSystemPrompt
+                : leader.SystemPrompt;
+
+            // Build conversation as a threaded prompt so the QB has full context
+            var conversationParts = new List<string>();
+            foreach (var msg in Messages)
+            {
+                var role = msg.Role == "user" ? "Head Coach" : "Quarterback";
+                conversationParts.Add($"[{role}]\n{msg.Content}");
+            }
+            var prompt = string.Join("\n\n", conversationParts) + "\n\n[Quarterback]\n";
 
             await foreach (var chunk in _service.StreamQbResponseAsync(
                 leader.Model.ToModelId(),
-                leader.SystemPrompt ?? "You are the Quarterback, the team leader.",
+                systemPrompt,
                 prompt, Session?.RepoPath, _cts.Token))
             {
                 StreamingContent += chunk;

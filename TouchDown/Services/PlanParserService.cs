@@ -98,7 +98,7 @@ public partial class PlanParserService : IPlanParserService
         var response = await provider.RunAsync(new AgentContext
         {
             ModelId = qb?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId(),
-            SystemPrompt = qb?.SystemPrompt ?? "You are the Quarterback. Produce structured plans.",
+            SystemPrompt = qb?.SystemPrompt ?? AgentDefaults.QuarterbackSystemPrompt,
             Prompt = structuredPrompt,
             WorkingDirectory = workingDirectory,
         }, ct);

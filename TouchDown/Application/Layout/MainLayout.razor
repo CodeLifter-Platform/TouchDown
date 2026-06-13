@@ -1,10 +1,15 @@
 @using TD.Themes
+@using TD.Components.Consent
+@using TD.Services
 @inherits LayoutComponentBase
+@inject IUserPreferencesService Prefs
 
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" Theme="_currentTheme" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
+
+<TelemetryConsentModal OnResolved="@(() => InvokeAsync(StateHasChanged))" />
 
 <MudLayout>
     <MudAppBar Elevation="0" Dense="true" Fixed="true" Class="td-appbar">
@@ -37,6 +42,7 @@
             <MudNavLink Href="/" Icon="@Icons.Material.Filled.Dashboard" Match="NavLinkMatch.All">Dashboard</MudNavLink>
             <MudNavLink Href="/new-drive" Icon="@Icons.Material.Filled.PlayArrow">New Drive</MudNavLink>
             <MudNavLink Href="/teams" Icon="@Icons.Material.Filled.Groups">Teams</MudNavLink>
+            <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
         </MudNavMenu>
     </MudDrawer>
 

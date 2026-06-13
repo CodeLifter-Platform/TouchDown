@@ -6,6 +6,7 @@ namespace TD.Areas.Teams.Index;
 public interface ITeamsIndexService
 {
     Task<List<AgentTeam>> GetAllTeamsAsync();
+    Task UpdateMemberPromptAsync(int memberId, string systemPrompt);
 }
 
 public class TeamsIndexServiceException : Exception
@@ -36,6 +37,20 @@ public class TeamsIndexService : ITeamsIndexService
         {
             _log.Error(ex, "Failed to get all teams");
             throw new TeamsIndexServiceException("Failed to get all teams", ex);
+        }
+    }
+
+    public async Task UpdateMemberPromptAsync(int memberId, string systemPrompt)
+    {
+        _log.Debug("Updating system prompt for member {MemberId}", memberId);
+        try
+        {
+            await _da.UpdateMemberPromptAsync(memberId, systemPrompt);
+        }
+        catch (Exception ex) when (ex is not TeamsIndexServiceException)
+        {
+            _log.Error(ex, "Failed to update system prompt for member {MemberId}", memberId);
+            throw new TeamsIndexServiceException($"Failed to update system prompt for member {memberId}", ex);
         }
     }
 }

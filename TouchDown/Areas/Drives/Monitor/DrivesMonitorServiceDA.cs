@@ -38,6 +38,7 @@ public class DrivesMonitorServiceDA : IDrivesMonitorServiceDA
                     .ThenInclude(t => t!.Members)
                 .Include(d => d.Logs)
                 .Include(d => d.Plays)
+                    .ThenInclude(p => p.AssignedMember)
                 .FirstOrDefaultAsync(d => d.DriveId == driveId);
         }
         catch (Exception ex)
