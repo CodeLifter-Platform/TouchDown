@@ -170,6 +170,13 @@ public class CodexProvider : IAgentProvider
         psi.ArgumentList.Add("--model");
         psi.ArgumentList.Add(ctx.ModelId);
 
+        // Codex/OpenAI reasoning models accept low|medium|high via config override.
+        if (!string.IsNullOrEmpty(ctx.Effort))
+        {
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add($"model_reasoning_effort={ctx.Effort}");
+        }
+
         if (!string.IsNullOrEmpty(ctx.WorkingDirectory))
         {
             psi.ArgumentList.Add("--cd");

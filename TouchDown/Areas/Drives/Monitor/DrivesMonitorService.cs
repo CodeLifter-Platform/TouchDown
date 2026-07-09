@@ -8,6 +8,7 @@ public interface IDrivesMonitorService
 {
     Task<Drive?> GetDriveAsync(string driveId);
     Task CancelDriveAsync(string driveId);
+    Task RenameDriveAsync(string driveId, string? name);
 }
 
 public class DrivesMonitorServiceException : Exception
@@ -40,6 +41,20 @@ public class DrivesMonitorService : IDrivesMonitorService
         {
             _log.Error(ex, "Failed to get drive {DriveId}", driveId);
             throw new DrivesMonitorServiceException($"Failed to get drive '{driveId}'", ex);
+        }
+    }
+
+    public async Task RenameDriveAsync(string driveId, string? name)
+    {
+        _log.Debug("Renaming drive {DriveId}", driveId);
+        try
+        {
+            await _da.RenameDriveAsync(driveId, name);
+        }
+        catch (Exception ex) when (ex is not DrivesMonitorServiceException)
+        {
+            _log.Error(ex, "Failed to rename drive {DriveId}", driveId);
+            throw new DrivesMonitorServiceException($"Failed to rename drive '{driveId}'", ex);
         }
     }
 

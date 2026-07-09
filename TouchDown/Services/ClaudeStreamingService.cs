@@ -150,6 +150,7 @@ public class ClaudeStreamingService : IClaudeStreamingService
         string systemPrompt,
         string userMessage,
         string? workingDirectory = null,
+        string? effort = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var options = new ClaudeRunOptions
@@ -157,13 +158,49 @@ public class ClaudeStreamingService : IClaudeStreamingService
             ModelId = modelId,
             SystemPrompt = systemPrompt,
             Prompt = userMessage,
-            WorkingDirectory = workingDirectory
+            WorkingDirectory = workingDirectory,
+            Effort = effort,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools
         };
 
         await foreach (var chunk in StreamAsync(options, cancellationToken))
         {
             if (chunk.TextDelta != null)
                 yield return chunk.TextDelta;
+            else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
+                // Surface CLI failures instead of swallowing them — otherwise the
+                // huddle just shows an empty bubble and the QB looks like it never started.
+                yield return $"\n\n⚠️ {chunk.Result}";
+        }
+    }
+
+    public async IAsyncEnumerable<string> StreamResearchAsync(
+        string modelId,
+        string systemPrompt,
+        string prompt,
+        string? workingDirectory = null,
+        string? effort = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var options = new ClaudeRunOptions
+        {
+            ModelId = modelId,
+            SystemPrompt = systemPrompt,
+            Prompt = prompt,
+            WorkingDirectory = workingDirectory,
+            Effort = effort,
+            // Read-only web + filesystem tools, allowlisted so the headless run never blocks on a prompt.
+            AllowedTools = ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
+            DangerouslySkipPermissions = true,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools,
+        };
+
+        await foreach (var chunk in StreamAsync(options, cancellationToken))
+        {
+            if (chunk.TextDelta != null)
+                yield return chunk.TextDelta;
+            else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
+                yield return $"\n\n⚠️ {chunk.Result}";
         }
     }
 
@@ -187,6 +224,11 @@ public class ClaudeStreamingService : IClaudeStreamingService
 
     private static ClaudeStreamChunk? MapEventToChunk(ClaudeStreamEvent evt)
     {
+        // With --include-partial-messages the real event is nested inside a
+        // "stream_event" envelope. Unwrap so the cases below match as before.
+        if (evt.Type == "stream_event" && evt.Event != null)
+            evt = evt.Event;
+
         return evt.Type switch
         {
             // Text streaming
@@ -220,7 +262,20 @@ public class ClaudeStreamingService : IClaudeStreamingService
 
     private Process CreateProcess(ClaudeRunOptions options)
     {
-        var args = new List<string> { "--print", "--output-format", "stream-json", "--model", options.ModelId };
+        var args = new List<string>
+        {
+            "--print",
+            "--verbose",                  // CLI requires this when --print is combined with --output-format stream-json
+            "--include-partial-messages", // emit content_block_delta events so we can stream text token-by-token
+            "--output-format", "stream-json",
+            "--model", options.ModelId
+        };
+
+        if (!string.IsNullOrEmpty(options.Effort))
+        {
+            args.Add("--effort");
+            args.Add(options.Effort);
+        }
 
         if (!string.IsNullOrEmpty(options.SystemPrompt))
         {
@@ -238,6 +293,12 @@ public class ClaudeStreamingService : IClaudeStreamingService
         {
             args.Add("--allowedTools");
             args.AddRange(options.AllowedTools);
+        }
+
+        if (options.DisallowedTools is { Count: > 0 })
+        {
+            args.Add("--disallowedTools");
+            args.AddRange(options.DisallowedTools);
         }
 
         if (options.DangerouslySkipPermissions)

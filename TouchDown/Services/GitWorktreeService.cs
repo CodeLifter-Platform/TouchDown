@@ -112,9 +112,24 @@ public class GitWorktreeService : IGitWorktreeService
 
     public async Task<GitDiffSummary> GetDiffSummaryAsync(string workingDir, CancellationToken ct = default)
     {
-        // Get diff of staged + unstaged combined
-        var diffText = await RunGitAsync(workingDir, "diff HEAD", ct);
-        var statLine = await RunGitAsync(workingDir, "diff HEAD --shortstat", ct);
+        // Repos with no commits have no HEAD — fall back to staging all files and diffing the index
+        var hasHead = await HasCommitsAsync(workingDir, ct);
+
+        string diffText, statLine;
+        if (hasHead)
+        {
+            diffText = await RunGitAsync(workingDir, "diff HEAD", ct);
+            statLine = await RunGitAsync(workingDir, "diff HEAD --shortstat", ct);
+        }
+        else
+        {
+            // Stage everything so we can diff the index against nothing
+            await RunGitAsync(workingDir, "add -A", ct);
+            diffText = await RunGitAsync(workingDir, "diff --cached", ct);
+            statLine = await RunGitAsync(workingDir, "diff --cached --shortstat", ct);
+            // Unstage so we don't leave side effects
+            await RunGitAsync(workingDir, "reset", ct);
+        }
 
         int files = 0, insertions = 0, deletions = 0;
         var stat = statLine.Trim();
@@ -179,6 +194,19 @@ public class GitWorktreeService : IGitWorktreeService
         await RunGitAsync(path, "init", ct);
         _logger.LogInformation("Initialized git repo at {Path}", path);
         return path;
+    }
+
+    private async Task<bool> HasCommitsAsync(string workingDir, CancellationToken ct)
+    {
+        try
+        {
+            await RunGitAsync(workingDir, "rev-parse HEAD", ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task<string> RunGitAsync(string workingDir, string arguments, CancellationToken ct)

@@ -1,0 +1,17 @@
+.play-board-row {
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.play-board-row--running {
+    background-color: rgba(var(--mud-palette-info-rgb, 33, 150, 243), 0.08);
+}
+
+.play-board-row--done {
+    opacity: 0.75;
+}
+
+.play-board-row--failed {
+    background-color: rgba(var(--mud-palette-error-rgb, 244, 67, 54), 0.08);
+}
+

@@ -19,7 +19,7 @@ public interface IAgentOrchestrationService
 public class AgentOrchestrationService : IAgentOrchestrationService
 {
     private readonly IDbContextFactory<TDDbContext> _dbFactory;
-    private readonly IAgentProvider _provider;
+    private readonly IAgentProviderRegistry _providerRegistry;
     private readonly IGitWorktreeService _git;
     private readonly ISharedDriveContext _context;
     private readonly IPlanParserService _planParser;
@@ -29,7 +29,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
     public AgentOrchestrationService(
         IDbContextFactory<TDDbContext> dbFactory,
-        IAgentProvider provider,
+        IAgentProviderRegistry providerRegistry,
         IGitWorktreeService git,
         ISharedDriveContext context,
         IPlanParserService planParser,
@@ -37,7 +37,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         ILogger<AgentOrchestrationService> logger)
     {
         _dbFactory = dbFactory;
-        _provider = provider;
+        _providerRegistry = providerRegistry;
         _git = git;
         _context = context;
         _planParser = planParser;
@@ -49,24 +49,60 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-        var drive = new Drive
-        {
-            TaskDescription = session.TaskDescription ?? string.Empty,
-            MaxParallelism = session.MaxParallelism,
-            SourceType = session.SourceType,
-            RepoPath = session.RepoPath,
-            Branch = session.Branch,
-            WorkspaceMode = session.WorkspaceMode,
-            WorkspacePath = session.WorkspaceMode == WorkspaceMode.FreshFolder
-                ? Path.Combine(Path.GetTempPath(), "touchdown", session.FreshFolderName ?? session.SessionId)
-                : session.RepoPath,
-            PrBranchName = session.PrBranchName,
-            AgentTeamId = session.Team.Id,
-            HuddlePlan = session.Drive.HuddlePlan,
-            Status = DriveStatus.InProgress
-        };
+        var workspacePath = session.WorkspaceMode == WorkspaceMode.FreshFolder
+            ? Path.Combine(Path.GetTempPath(), "touchdown", session.FreshFolderName ?? session.SessionId)
+            : session.RepoPath;
 
-        db.Drives.Add(drive);
+        // The Huddle path persists a draft Drive (Status=Huddle) up front so the conversation
+        // is stored as it happens. Promote that same row to InProgress here rather than inserting
+        // a duplicate. The "Snap directly" path has no draft (Id == 0), so create a fresh Drive.
+        Drive? drive = session.Drive?.Id > 0
+            ? await db.Drives.FirstOrDefaultAsync(d => d.Id == session.Drive.Id, ct)
+            : null;
+
+        if (drive != null)
+        {
+            drive.Name = string.IsNullOrWhiteSpace(session.Name) ? drive.Name : session.Name.Trim();
+            drive.TaskDescription = session.TaskDescription ?? string.Empty;
+            drive.MaxParallelism = session.MaxParallelism;
+            drive.SourceType = session.SourceType;
+            drive.RepoPath = session.RepoPath;
+            drive.Branch = session.Branch;
+            drive.WorkspaceMode = session.WorkspaceMode;
+            drive.WorkspacePath = workspacePath;
+            drive.PrBranchName = session.PrBranchName;
+            drive.AgentTeamId = session.Team.Id;
+            drive.HuddlePlan = session.Drive!.HuddlePlan;
+            drive.ProviderId = session.ProviderId;
+            drive.ModelId = session.ModelId;
+            drive.Effort = session.Effort;
+            drive.OverrideTeamConfig = session.OverrideTeamConfig;
+            drive.Status = DriveStatus.InProgress;
+        }
+        else
+        {
+            drive = new Drive
+            {
+                Name = string.IsNullOrWhiteSpace(session.Name) ? null : session.Name.Trim(),
+                TaskDescription = session.TaskDescription ?? string.Empty,
+                MaxParallelism = session.MaxParallelism,
+                SourceType = session.SourceType,
+                RepoPath = session.RepoPath,
+                Branch = session.Branch,
+                WorkspaceMode = session.WorkspaceMode,
+                WorkspacePath = workspacePath,
+                PrBranchName = session.PrBranchName,
+                AgentTeamId = session.Team.Id,
+                HuddlePlan = session.Drive?.HuddlePlan,
+                ProviderId = session.ProviderId,
+                ModelId = session.ModelId,
+                Effort = session.Effort,
+                OverrideTeamConfig = session.OverrideTeamConfig,
+                Status = DriveStatus.InProgress
+            };
+            db.Drives.Add(drive);
+        }
+
         await db.SaveChangesAsync(ct);
 
         // Load the full team with members for execution
@@ -132,7 +168,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     {
         try
         {
+            // Resolve the provider selected by the user
+            var provider = !string.IsNullOrEmpty(drive.ProviderId)
+                ? _providerRegistry.GetById(drive.ProviderId)
+                : (await _providerRegistry.GetAvailableAsync(ct)).FirstOrDefault()
+                  ?? throw new InvalidOperationException("No agent providers are available on this machine.");
+
+            _logger.LogInformation("Drive {DriveId} using provider: {Provider}", drive.DriveId, provider.DisplayName);
+
             // Phase 0: Prepare workspace
+            await SendPhaseChanged(drive.DriveId, "Preparing Workspace", ct);
             var workDir = await PrepareWorkspaceAsync(drive, ct);
             await _context.InitializeAsync(drive.DriveId, workDir, ct);
 
@@ -140,14 +185,22 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             await SendLog(drive.DriveId, "System", $"Team: {team.Name} ({team.Members.Count} agents)", ct);
 
             // Phase 1: Parse the Huddle plan into structured assignments
+            await SendPhaseChanged(drive.DriveId, "Quarterback Planning", ct);
             await SendLog(drive.DriveId, "Quarterback", "Parsing the Huddle plan into structured assignments...", ct);
+
+            // Planning is always the Quarterback's job — it uses the drive's primary model + effort.
+            var qbModelId = !string.IsNullOrEmpty(drive.ModelId)
+                ? drive.ModelId
+                : team.GetLeader()?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId();
 
             var plan = await _planParser.ParsePlanFromHuddleAsync(
                 drive.HuddlePlan ?? drive.TaskDescription,
                 team,
                 drive.TaskDescription,
-                _provider,
+                provider,
                 workDir,
+                drive.ModelId,
+                ResolveEffort(provider, qbModelId, drive.Effort),
                 ct);
 
             // Save plan to shared context
@@ -158,6 +211,12 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             });
             await _context.WritePlanAsync(drive.DriveId, planJson, ct);
 
+            // Store the Quarterback's parsed plan as a "comment" turn in the conversation log.
+            var qbName = team.GetLeader()?.Name ?? "The Quarterback";
+            await AddTurnAsync(drive.Id, null, TurnPhase.Planning, "comment", qbName,
+                $"Plan: {plan.Summary} ({plan.Assignments.Count} assignments)\n\n{planJson}",
+                null, null, ct);
+
             await SendLog(drive.DriveId, "Quarterback",
                 $"Plan ready: {plan.Summary} ({plan.Assignments.Count} assignments)", ct);
 
@@ -165,14 +224,22 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             var plays = _planParser.ConvertPlanToPlays(plan, team);
             await SavePlays(drive.Id, plays, ct);
 
+            // Label fan-out instances ("The Offensive Line #1", "#2", …) once play ids exist.
+            var instanceLabels = InstanceLabeler.Label(plays.Select(p => new InstanceLabeler.PlayRef(
+                p.Id, p.AssignedMemberId, p.AssignedMember?.Name ?? "Unknown", p.OrderIndex,
+                p.AssignedMember?.MaxInstances ?? 1)));
+
+            await SendPlaysReady(drive.DriveId, plays, instanceLabels, ct);
+
             foreach (var play in plays)
             {
-                await SendLog(drive.DriveId, play.AssignedMember?.Name ?? "Unknown",
+                await SendLog(drive.DriveId, instanceLabels.GetValueOrDefault(play.Id, "Unknown"),
                     $"Assigned: {TruncateForLog(play.Description)}", ct);
             }
 
             // Phase 3: Execute plays respecting dependencies
-            await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, ct);
+            await SendPhaseChanged(drive.DriveId, "Executing Plays", ct);
+            await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, provider, instanceLabels, ct);
 
             // Phase 4: Mark Touchdown
             await MarkDriveStatus(drive, DriveStatus.Touchdown, ct);
@@ -205,11 +272,15 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     /// </summary>
     private async Task ExecutePlaysWithDependencies(
         Drive drive, List<Play> plays, QuarterbackPlan plan, AgentTeam team,
-        string workDir, CancellationToken ct)
+        string workDir, IAgentProvider provider, Dictionary<int, string> instanceLabels, CancellationToken ct)
     {
         using var semaphore = new SemaphoreSlim(drive.MaxParallelism);
         var completedIndices = new ConcurrentBag<int>();
         var playResults = new ConcurrentDictionary<int, PlayResult>();
+
+        // Every agent gets the real roster so it identifies its actual teammates, not the
+        // Claude Code subagents/plugins in the environment.
+        var rosterPrompt = team.BuildRosterPrompt();
 
         // Build dependency map from plan
         var dependencyMap = new Dictionary<int, List<int>>();
@@ -221,13 +292,15 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         // Group by waves: wave 0 = no deps, wave 1 = depends on wave 0, etc.
         var waves = BuildExecutionWaves(plays.Count, dependencyMap);
 
-        foreach (var wave in waves)
+        for (int waveIndex = 0; waveIndex < waves.Count; waveIndex++)
         {
+            var wave = waves[waveIndex];
+            await SendPhaseChanged(drive.DriveId, $"Executing Wave {waveIndex + 1} of {waves.Count}", ct);
             await SendLog(drive.DriveId, "System",
-                $"Executing wave: {string.Join(", ", wave.Select(i => plays[i].AssignedMember?.Name ?? $"Play {i}"))}", ct);
+                $"Executing wave {waveIndex + 1}/{waves.Count}: {string.Join(", ", wave.Select(i => instanceLabels.GetValueOrDefault(plays[i].Id, $"Play {i}")))}", ct);
 
             var waveTasks = wave.Select(playIndex =>
-                RunPlayWithContextAsync(drive, plays[playIndex], playIndex, workDir, semaphore, playResults, ct));
+                RunPlayWithContextAsync(drive, plays[playIndex], playIndex, workDir, semaphore, playResults, provider, instanceLabels, rosterPrompt, ct));
 
             await Task.WhenAll(waveTasks);
 
@@ -239,17 +312,21 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     private async Task RunPlayWithContextAsync(
         Drive drive, Play play, int playIndex, string workDir,
         SemaphoreSlim semaphore, ConcurrentDictionary<int, PlayResult> results,
-        CancellationToken ct)
+        IAgentProvider provider, Dictionary<int, string> instanceLabels, string rosterPrompt, CancellationToken ct)
     {
         await semaphore.WaitAsync(ct);
+        // The instance label ("The Offensive Line #2") is this run's identity for status, logs,
+        // turns, and — crucially — its shared-context output file, so parallel instances don't collide.
+        var agentName = instanceLabels.GetValueOrDefault(play.Id, play.AssignedMember?.Name ?? "Unknown");
         try
         {
             var member = play.AssignedMember!;
-            await UpdateAgentStatus(drive.DriveId, member.Name, "Running", 0, ct);
-            await SendLog(drive.DriveId, member.Name, $"Starting: {TruncateForLog(play.Description)}", ct);
+            await UpdateAgentStatus(drive.DriveId, agentName, "Running", 0, ct);
+            await SendLog(drive.DriveId, agentName, $"Starting: {TruncateForLog(play.Description)}", ct);
 
             play.Status = PlayStatus.InProgress;
             play.StartedAt = DateTime.UtcNow;
+            await SendPlayStatusUpdate(drive.DriveId, play, agentName, ct);
 
             // Build context-aware prompt: include plan + prior outputs for validators
             Dictionary<string, string>? priorOutputs = null;
@@ -259,7 +336,10 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             }
 
             var fullPrompt = _context.BuildAgentContextPrompt(
-                drive.DriveId, member.Name, play.Description, priorOutputs);
+                drive.DriveId, agentName, play.Description, priorOutputs);
+
+            // Persist the prompt this agent received as a conversation turn.
+            await AddTurnAsync(drive.Id, play.Id, TurnPhase.Execution, "user", agentName, fullPrompt, null, null, ct);
 
             // Stream provider output, forwarding chunks to the UI in real time
             var fullText = new System.Text.StringBuilder();
@@ -267,29 +347,38 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             double? costUsd = null;
             bool isError = false;
 
-            await foreach (var chunk in _provider.StreamAsync(
+            // When the drive overrides the team, every agent runs on the Quarterback's primary
+            // model + effort; otherwise each agent keeps its own model + effort.
+            var useOverride = drive.OverrideTeamConfig && !string.IsNullOrEmpty(drive.ModelId);
+            var modelId = useOverride ? drive.ModelId! : member.Model.ToModelId();
+            var effortLevel = useOverride ? drive.Effort : member.Effort;
+
+            await foreach (var chunk in provider.StreamAsync(
                 new AgentContext
                 {
-                    ModelId = member.Model.ToModelId(),
-                    SystemPrompt = member.SystemPrompt,
+                    ModelId = modelId,
+                    SystemPrompt = $"{member.SystemPrompt}\n\n{rosterPrompt}",
                     Prompt = fullPrompt,
                     WorkingDirectory = workDir,
                     DangerouslySkipPermissions = true,
                     AllowedTools = GetToolsForRole(member.Role),
+                    // Block the Task/Agent tool so agents can't spawn the environment's Claude Code subagents.
+                    DisallowedTools = AgentDefaults.BlockedSubagentTools,
+                    Effort = ResolveEffort(provider, modelId, effortLevel),
                 }, ct))
             {
                 if (chunk.TextDelta != null)
                 {
                     fullText.Append(chunk.TextDelta);
                     if (chunk.TextDelta.Contains('\n'))
-                        await SendLog(drive.DriveId, member.Name, chunk.TextDelta.Trim(), ct);
+                        await SendLog(drive.DriveId, agentName, chunk.TextDelta.Trim(), ct);
                 }
 
                 if (chunk.ToolName != null)
                 {
                     if (!toolsUsed.Contains(chunk.ToolName))
                         toolsUsed.Add(chunk.ToolName);
-                    await SendLog(drive.DriveId, member.Name, $"Using tool: {chunk.ToolName}", ct);
+                    await SendLog(drive.DriveId, agentName, $"Using tool: {chunk.ToolName}", ct);
                 }
 
                 if (chunk.CostUsd.HasValue) costUsd = chunk.CostUsd;
@@ -306,15 +395,20 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                 ToolsUsed = toolsUsed,
             };
 
+            // Persist the agent's reply as a conversation turn (captures both success and error output).
+            await AddTurnAsync(drive.Id, play.Id, TurnPhase.Execution, "assistant", agentName,
+                result.FullText, result.ToolsUsed, result.CostUsd, ct);
+
             if (result.IsError)
             {
                 play.Status = PlayStatus.Failed;
                 play.Output = result.FullText;
                 play.CompletedAt = DateTime.UtcNow;
-                await SendLog(drive.DriveId, member.Name, $"FAILED: {TruncateForLog(result.FullText)}", ct);
-                await UpdateAgentStatus(drive.DriveId, member.Name, "Failed", 100, ct);
+                await SendLog(drive.DriveId, agentName, $"FAILED: {TruncateForLog(result.FullText)}", ct);
+                await UpdateAgentStatus(drive.DriveId, agentName, "Failed", 100, ct);
+                await SendPlayStatusUpdate(drive.DriveId, play, agentName, ct);
                 await SavePlayStatus(play, ct);
-                throw new InvalidOperationException($"Agent {member.Name} failed: {result.FullText}");
+                throw new InvalidOperationException($"Agent {agentName} failed: {result.FullText}");
             }
 
             play.Output = result.FullText;
@@ -322,14 +416,15 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             play.CompletedAt = DateTime.UtcNow;
 
             // Write output to shared context so other agents can see it
-            await _context.WriteAgentOutputAsync(drive.DriveId, member.Name, result.FullText, ct);
+            await _context.WriteAgentOutputAsync(drive.DriveId, agentName, result.FullText, ct);
 
             results[playIndex] = new PlayResult { Output = result.FullText, CostUsd = result.CostUsd ?? 0 };
 
             var costInfo = result.CostUsd.HasValue ? $" (${result.CostUsd:F4})" : "";
             var toolInfo = result.ToolsUsed.Count > 0 ? $" [tools: {string.Join(", ", result.ToolsUsed)}]" : "";
-            await SendLog(drive.DriveId, member.Name, $"Completed{costInfo}{toolInfo}", ct);
-            await UpdateAgentStatus(drive.DriveId, member.Name, "Completed", 100, ct);
+            await SendLog(drive.DriveId, agentName, $"Completed{costInfo}{toolInfo}", ct);
+            await UpdateAgentStatus(drive.DriveId, agentName, "Completed", 100, ct);
+            await SendPlayStatusUpdate(drive.DriveId, play, agentName, ct);
             await SavePlayStatus(play, ct);
         }
         catch (OperationCanceledException)
@@ -340,8 +435,8 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         {
             play.Status = PlayStatus.Failed;
             play.CompletedAt = DateTime.UtcNow;
-            await SendLog(drive.DriveId, play.AssignedMember?.Name ?? "Unknown", $"Error: {ex.Message}", ct);
-            await UpdateAgentStatus(drive.DriveId, play.AssignedMember?.Name ?? "Unknown", "Failed", 100, ct);
+            await SendLog(drive.DriveId, agentName, $"Error: {ex.Message}", ct);
+            await UpdateAgentStatus(drive.DriveId, agentName, "Failed", 100, ct);
             await SavePlayStatus(play, ct);
             throw;
         }
@@ -391,6 +486,8 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         AgentRole.Validator => ["Read", "Glob", "Grep", "Bash"],
         AgentRole.Tester => ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
         AgentRole.DevOps => ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
+        // The Offensive Coordinator researches the web — read-only, no edits or shell.
+        AgentRole.Researcher => ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
         _ => ["Read", "Glob", "Grep"]
     };
 
@@ -401,14 +498,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             WorkspaceMode.PrWorktree when !string.IsNullOrEmpty(drive.RepoPath) =>
                 await _git.CreateWorktreeAsync(drive.RepoPath, drive.PrBranchName ?? $"touchdown/drive-{drive.DriveId}", ct),
             WorkspaceMode.FreshFolder =>
-                CreateFreshFolder(drive.WorkspacePath ?? Path.Combine(Path.GetTempPath(), "touchdown", drive.DriveId)),
+                await CreateFreshFolderAsync(drive.WorkspacePath ?? Path.Combine(Path.GetTempPath(), "touchdown", drive.DriveId), ct),
             _ => drive.RepoPath ?? Environment.CurrentDirectory
         };
     }
 
-    private static string CreateFreshFolder(string path)
+    private async Task<string> CreateFreshFolderAsync(string path, CancellationToken ct)
     {
         Directory.CreateDirectory(path);
+        if (!Directory.Exists(Path.Combine(path, ".git")))
+            await _git.InitRepoAsync(path, ct);
         return path;
     }
 
@@ -462,6 +561,39 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             new { AgentName = agentName, Status = status, ProgressPercent = progress }, ct);
     }
 
+    private async Task SendPhaseChanged(string driveId, string phase, CancellationToken ct)
+    {
+        await _hub.Clients.Group(driveId).SendAsync("DrivePhaseChanged",
+            new { DriveId = driveId, Phase = phase }, ct);
+    }
+
+    private async Task SendPlaysReady(string driveId, List<Play> plays, Dictionary<int, string> instanceLabels, CancellationToken ct)
+    {
+        var dtos = plays.Select(p => new
+        {
+            p.Id,
+            AgentName = instanceLabels.GetValueOrDefault(p.Id, p.AssignedMember?.Name ?? "Unknown"),
+            p.Description,
+            Status = p.Status.ToString(),
+            p.OrderIndex
+        }).ToList();
+
+        await _hub.Clients.Group(driveId).SendAsync("PlaysReady",
+            new { DriveId = driveId, Plays = dtos }, ct);
+    }
+
+    private async Task SendPlayStatusUpdate(string driveId, Play play, string agentName, CancellationToken ct)
+    {
+        await _hub.Clients.Group(driveId).SendAsync("PlayStatusUpdate", new
+        {
+            PlayId = play.Id,
+            AgentName = agentName,
+            Status = play.Status.ToString(),
+            play.StartedAt,
+            play.CompletedAt
+        }, ct);
+    }
+
     private async Task SendLog(string driveId, string agentName, string message, CancellationToken ct)
     {
         await _hub.Clients.Group(driveId).SendAsync("ReceiveLog", new
@@ -492,6 +624,43 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         {
             _logger.LogWarning(ex, "Failed to persist log for drive {DriveId}", driveId);
         }
+    }
+
+    private async Task AddTurnAsync(int driveId, int? playId, TurnPhase phase, string role, string agentName,
+        string content, List<string>? toolsUsed, double? costUsd, CancellationToken ct)
+    {
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            db.DriveTurns.Add(new DriveTurn
+            {
+                DriveId = driveId,
+                PlayId = playId,
+                Phase = phase,
+                Role = role,
+                AgentName = agentName,
+                Content = content,
+                ToolsUsed = toolsUsed is { Count: > 0 } ? JsonSerializer.Serialize(toolsUsed) : null,
+                CostUsd = costUsd
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // A failed turn write must not break execution.
+            _logger.LogWarning(ex, "Failed to persist {Phase} turn for drive {DriveId}", phase, driveId);
+        }
+    }
+
+    /// <summary>Maps an effort level to the provider-specific CLI value for a given model.</summary>
+    private static string? ResolveEffort(IAgentProvider provider, string modelId, AgentEffort effort)
+    {
+        if (provider.ProviderId == "codex")
+            return effort.ToCodexReasoningEffort();
+        // Claude: the --effort flag is not supported on Haiku.
+        if (modelId.Contains("haiku", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return effort.ToCliValue();
     }
 
     private static string TruncateForLog(string text) =>

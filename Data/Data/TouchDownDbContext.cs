@@ -13,6 +13,7 @@ public class TDDbContext : DbContext
     public DbSet<Drive> Drives => Set<Drive>();
     public DbSet<Play> Plays => Set<Play>();
     public DbSet<DriveLog> DriveLogs => Set<DriveLog>();
+    public DbSet<DriveTurn> DriveTurns => Set<DriveTurn>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +43,16 @@ public class TDDbContext : DbContext
                 .WithOne(l => l.Drive)
                 .HasForeignKey(l => l.DriveId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(d => d.Turns)
+                .WithOne(t => t.Drive)
+                .HasForeignKey(t => t.DriveId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DriveTurn>(entity =>
+        {
+            entity.HasIndex(t => new { t.DriveId, t.Timestamp });
         });
 
         // Seed the default Playbook team
@@ -49,16 +60,16 @@ public class TDDbContext : DbContext
         modelBuilder.Entity<AgentTeam>().HasData(team);
 
         modelBuilder.Entity<AgentMember>().HasData(
-            new { Id = 1, Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = "You are the Quarterback — the team leader. You read the task, create a structured plan, delegate assignments to your team, and coordinate the drive to completion.", AgentTeamId = 1 },
-            new { Id = 2, Name = "Left Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Left Guard — a core implementer. You receive your assignment from the Quarterback and execute it with precision.", AgentTeamId = 1 },
-            new { Id = 3, Name = "Right Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Right Guard — a parallel implementer. You work alongside the Left Guard on your assigned portion.", AgentTeamId = 1 },
-            new { Id = 4, Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Guards before it merges.", AgentTeamId = 1 },
-            new { Id = 5, Name = "The Scout", Role = AgentRole.Tester, Model = ClaudeModel.Haiku, SystemPrompt = "You are the Scout — fast and lightweight. You write and run tests concurrently with implementation.", AgentTeamId = 1 },
-            new { Id = 6, Name = "Special Teams", Role = AgentRole.DevOps, Model = ClaudeModel.Haiku, SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work.", AgentTeamId = 1 }
+            new { Id = 1, Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = AgentDefaults.QuarterbackSystemPrompt, AgentTeamId = 1 },
+            new { Id = 2, Name = "The Offensive Line", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 4, SystemPrompt = AgentDefaults.OffensiveLineSystemPrompt, AgentTeamId = 1 },
+            new { Id = 4, Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Offensive Line before it merges.", AgentTeamId = 1 },
+            new { Id = 5, Name = "The Scout", Role = AgentRole.Researcher, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = AgentDefaults.ScoutSystemPrompt, AgentTeamId = 1 },
+            new { Id = 6, Name = "Special Teams", Role = AgentRole.DevOps, Model = ClaudeModel.Haiku, Effort = AgentEffort.Medium, MaxInstances = 1, SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work.", AgentTeamId = 1 },
+            new { Id = 8, Name = "The Defensive Line", Role = AgentRole.Tester, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 4, SystemPrompt = AgentDefaults.DefensiveLineSystemPrompt, AgentTeamId = 1 }
         );
 
         modelBuilder.Entity<CommunicationRule>().HasData(
-            new { Id = 1, Style = CommStyle.LeaderGated, Description = "QB calls plays, Guards run parallel, Safety reviews before merge, Scout runs concurrently.", AgentTeamId = 1 }
+            new { Id = 1, Style = CommStyle.LeaderGated, Description = "QB calls plays, the Scout researches when needed, the Offensive Line and the Defensive Line each run multiple instances in parallel, Safety reviews before merge.", AgentTeamId = 1 }
         );
     }
 }

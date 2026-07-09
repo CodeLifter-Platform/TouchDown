@@ -1,0 +1,41 @@
+.telemetry-consent-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    /* Block all pointer events on everything behind this overlay */
+    backdrop-filter: blur(2px);
+}
+
+.telemetry-consent-card {
+    max-width: 660px;
+    width: 100%;
+    padding: 2.5rem;
+    border-radius: 12px;
+}
+
+/* Section headers — icon slot matches list item icon slot exactly */
+.consent-section-icon {
+    min-width: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+/* Pull list items flush so their circle icons align with the section header icons */
+.telemetry-consent-card ::deep .mud-list-item {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.telemetry-consent-card ::deep .mud-list-item-icon {
+    min-width: 28px;
+    margin-right: 4px;
+}
+

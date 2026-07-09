@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text;
 
 namespace TD.Models;
 
@@ -19,23 +20,59 @@ public class AgentTeam
 
     public AgentMember? GetLeader() => Members.FirstOrDefault(m => m.IsLeader);
 
+    /// <summary>
+    /// A context block, injected into every agent's prompt, that names the real roster. Without it an
+    /// agent only knows about the Claude Code subagents/plugins in its environment and will report those
+    /// when asked who "the team" is — this anchors it to its actual TouchDown teammates.
+    /// </summary>
+    public string BuildRosterPrompt()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"## Your Team — \"{Name}\"");
+        sb.AppendLine("You are a player on this TouchDown agent team. Stay in character as your role. Your ONLY");
+        sb.AppendLine("teammates are the players listed below — you are not a generic assistant and not an external");
+        sb.AppendLine("Claude Code subagent or plugin. If the Head Coach asks who is on the team, use exactly this");
+        sb.AppendLine("roster and no one else:");
+        sb.AppendLine("You speak ONLY for yourself. Never fabricate, impersonate, quote, or invent a teammate's words,");
+        sb.AppendLine("name, or status — only each teammate can answer for itself. If the Head Coach wants the whole");
+        sb.AppendLine("team to report or roll-call, do NOT make up their answers; that runs as a real roll call where");
+        sb.AppendLine("each teammate checks in for itself.");
+        foreach (var m in Members.OrderBy(m => m.Role))
+        {
+            var fanout = m.MaxInstances > 1 ? $"; fans out into up to {m.MaxInstances} parallel instances" : "";
+            sb.AppendLine($"- {m.Name} — {RoleBlurb(m.Role)}{fanout}");
+        }
+        return sb.ToString();
+    }
+
+    private static string RoleBlurb(AgentRole role) => role switch
+    {
+        AgentRole.Leader => "the Quarterback; calls the plays and coordinates the drive",
+        AgentRole.Researcher => "researches the web for docs, APIs, and best practices",
+        AgentRole.Worker => "implements the feature work",
+        AgentRole.Tester => "writes and runs tests and validates the work",
+        AgentRole.Validator => "reviews all code before it merges",
+        AgentRole.DevOps => "handles CI/CD, infrastructure, and the build pipeline",
+        _ => role.ToString()
+    };
+
     public static AgentTeam CreateThePlaybook() => new()
     {
         Name = "The Playbook",
-        Description = "The default TD agent team. The Quarterback calls plays, Guards implement, Safety reviews, Scout tests, Special Teams handles DevOps.",
+        Description = "The default TD agent team. The Quarterback calls plays, the Scout researches the web, the Offensive Line implements and the Defensive Line tests/validates (both fanning out into parallel instances), Safety reviews, Special Teams handles DevOps.",
         IsDefault = true,
         Members =
         [
-            new() { Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = "You are the Quarterback — the team leader. You read the task, create a structured plan, delegate assignments to your team, and coordinate the drive to completion. You own the plan and make the final call." },
-            new() { Name = "Left Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Left Guard — a core implementer. You receive your assignment from the Quarterback and execute it with precision. Focus on clean, working code." },
-            new() { Name = "Right Guard", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Right Guard — a parallel implementer. You work alongside the Left Guard on your assigned portion. Focus on clean, working code that integrates with the team's output." },
-            new() { Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Guards before it merges. Check for bugs, security issues, code quality, and adherence to the plan." },
-            new() { Name = "The Scout", Role = AgentRole.Tester, Model = ClaudeModel.Haiku, SystemPrompt = "You are the Scout — fast and lightweight. You write and run tests concurrently with implementation. Focus on coverage and catching regressions early." },
+            new() { Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = AgentDefaults.QuarterbackSystemPrompt },
+            new() { Name = "The Scout", Role = AgentRole.Researcher, Model = ClaudeModel.Sonnet, SystemPrompt = AgentDefaults.ScoutSystemPrompt },
+            new() { Name = "The Offensive Line", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, MaxInstances = 4, SystemPrompt = AgentDefaults.OffensiveLineSystemPrompt },
+            new() { Name = "The Defensive Line", Role = AgentRole.Tester, Model = ClaudeModel.Sonnet, MaxInstances = 4, SystemPrompt = AgentDefaults.DefensiveLineSystemPrompt },
+            new() { Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Offensive Line and the Defensive Line before it merges. Check for bugs, security issues, code quality, test coverage, and adherence to the plan." },
             new() { Name = "Special Teams", Role = AgentRole.DevOps, Model = ClaudeModel.Haiku, SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work. You activate when the play involves DevOps tasks." },
         ],
         CommunicationRules =
         [
-            new() { Style = CommStyle.LeaderGated, Description = "Quarterback reads the task, huddles with the user, then snaps. Guards run in parallel. Safety reviews before merge. Scout runs concurrently." }
+            new() { Style = CommStyle.LeaderGated, Description = "Quarterback reads the task, huddles with the user, then snaps. The Scout researches when needed. The Offensive Line and the Defensive Line each run multiple instances in parallel. Safety reviews before merge." }
         ]
     };
 }

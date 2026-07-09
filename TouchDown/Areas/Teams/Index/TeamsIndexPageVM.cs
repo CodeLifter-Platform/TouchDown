@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using MudBlazor;
 using Serilog;
 using TD.Models;
@@ -9,7 +10,15 @@ namespace TD.Areas.Teams.Index;
 public interface ITeamsIndexPageVM
 {
     List<AgentTeam> Teams { get; }
+    int? EditingMemberId { get; }
+    string EditBuffer { get; set; }
+    bool IsSaving { get; }
     Task Loaded();
+    void BeginEdit(AgentMember member);
+    void CancelEdit();
+    Task SaveEdit(AgentMember member);
+    Task SaveMemberEffort(AgentMember member, AgentEffort effort);
+    Task SaveMemberModel(AgentMember member, ClaudeModel model);
 }
 
 public class TeamsIndexPageVMException : Exception
@@ -22,15 +31,28 @@ public class TeamsIndexPageVMException : Exception
 public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
 {
     private readonly ITeamsIndexService _service;
+    private readonly ISnackbar _snackbar;
     private readonly Serilog.ILogger _log = Log.ForContext<TeamsIndexPageVM>();
 
-    public TeamsIndexPageVM(ITeamsIndexService service)
+    public TeamsIndexPageVM(ITeamsIndexService service, ISnackbar snackbar)
     {
         _service = service;
+        _snackbar = snackbar;
     }
 
     [ObservableProperty]
     private List<AgentTeam> _teams = [];
+
+    /// <summary>Id of the member whose prompt is currently being edited, or null.</summary>
+    [ObservableProperty]
+    private int? _editingMemberId;
+
+    /// <summary>Working copy of the prompt while editing.</summary>
+    [ObservableProperty]
+    private string _editBuffer = "";
+
+    [ObservableProperty]
+    private bool _isSaving;
 
     public override async Task Loaded()
     {
@@ -46,6 +68,80 @@ public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
         }
     }
 
+    public void BeginEdit(AgentMember member)
+    {
+        EditingMemberId = member.Id;
+        EditBuffer = member.SystemPrompt ?? "";
+    }
+
+    public void CancelEdit()
+    {
+        EditingMemberId = null;
+        EditBuffer = "";
+    }
+
+    [RelayCommand]
+    public async Task SaveEdit(AgentMember member)
+    {
+        var newPrompt = EditBuffer.Trim();
+        if (string.IsNullOrWhiteSpace(newPrompt))
+        {
+            _snackbar.Add("System prompt can't be empty.", Severity.Warning);
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            await _service.UpdateMemberPromptAsync(member.Id, newPrompt);
+            member.SystemPrompt = newPrompt; // reflect in the loaded roster
+            EditingMemberId = null;
+            EditBuffer = "";
+            _snackbar.Add($"Updated {member.Name}'s prompt.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save prompt for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    public async Task SaveMemberEffort(AgentMember member, AgentEffort effort)
+    {
+        if (member.Effort == effort) return;
+        try
+        {
+            await _service.UpdateMemberEffortAsync(member.Id, effort);
+            member.Effort = effort; // reflect in the loaded roster
+            _snackbar.Add($"Set {member.Name}'s effort to {effort.ToDisplayName()}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save effort for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async Task SaveMemberModel(AgentMember member, ClaudeModel model)
+    {
+        if (member.Model == model) return;
+        try
+        {
+            await _service.UpdateMemberModelAsync(member.Id, model);
+            member.Model = model; // reflect in the loaded roster
+            _snackbar.Add($"Set {member.Name}'s model to {model.ToDisplayName()}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save model for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
     public static Color GetRoleColor(AgentRole role) => role switch
     {
         AgentRole.Leader => Color.Primary,
@@ -53,6 +149,7 @@ public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
         AgentRole.Validator => Color.Success,
         AgentRole.Tester => Color.Secondary,
         AgentRole.DevOps => Color.Warning,
+        AgentRole.Researcher => Color.Tertiary,
         _ => Color.Default
     };
 }

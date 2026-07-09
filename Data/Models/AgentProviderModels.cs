@@ -23,6 +23,12 @@ public record AgentContext
     public bool DangerouslySkipPermissions { get; init; }
     public string? AppendSystemPrompt { get; init; }
     public double? MaxBudgetUsd { get; init; }
+
+    /// <summary>Reasoning effort level (provider-specific CLI value, e.g. "low"|"medium"|"high"|"xhigh"|"max").</summary>
+    public string? Effort { get; init; }
+
+    /// <summary>Tools the agent is forbidden from using (e.g. "Task"/"Agent" to block subagent spawning).</summary>
+    public List<string>? DisallowedTools { get; init; }
 }
 
 /// <summary>

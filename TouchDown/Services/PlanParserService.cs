@@ -12,6 +12,8 @@ public interface IPlanParserService
         string taskDescription,
         IAgentProvider provider,
         string? workingDirectory,
+        string? modelOverride = null,
+        string? effort = null,
         CancellationToken ct = default);
 
     List<Play> ConvertPlanToPlays(QuarterbackPlan plan, AgentTeam team);
@@ -44,6 +46,8 @@ public partial class PlanParserService : IPlanParserService
         string taskDescription,
         IAgentProvider provider,
         string? workingDirectory,
+        string? modelOverride = null,
+        string? effort = null,
         CancellationToken ct = default)
     {
         // Try extracting JSON from the huddle output first
@@ -57,7 +61,7 @@ public partial class PlanParserService : IPlanParserService
         // Otherwise, ask the QB to produce a structured plan
         var qb = team.GetLeader();
         var memberList = string.Join("\n", team.Members.Select(m =>
-            $"- {m.Name} (Role: {m.Role}, Model: {m.Model.ToDisplayName()})"));
+            $"- {m.Name} (Role: {m.Role}, Model: {m.Model.ToDisplayName()}{(m.MaxInstances > 1 ? $", fan-out: up to {m.MaxInstances} parallel instances" : "")})"));
 
         var structuredPrompt = $$"""
             You previously discussed this task with the user:
@@ -75,7 +79,7 @@ public partial class PlanParserService : IPlanParserService
               "summary": "Brief summary of the plan",
               "assignments": [
                 {
-                  "agent_role": "Worker|Tester|Validator|DevOps",
+                  "agent_role": "Researcher|Worker|Tester|Validator|DevOps",
                   "agent_name": "The specific agent name from your team",
                   "task": "Detailed description of what this agent should do",
                   "depends_on": [],
@@ -86,10 +90,18 @@ public partial class PlanParserService : IPlanParserService
             }
 
             Rules:
-            - Split work between Workers (Left Guard, Right Guard) so they can work in parallel
-            - Workers should NOT overlap on the same files
-            - The Scout (Tester) runs concurrently with Workers
-            - The Safety (Validator) runs AFTER Workers complete
+            - The Scout (Researcher) looks things up on the web. If the task needs current docs, API details,
+              version compatibility, or unfamiliar libraries, give the Scout an early assignment with no
+              dependencies, and have the implementers depend on it so they can use its findings.
+            - The Defensive Line (Tester) handles testing and validation. Like the Offensive Line it can fan
+              out into multiple parallel instances — split the testing/validation into independent slices.
+              It usually depends on the implementers, or runs alongside them writing tests.
+            - Fan-out agents (e.g. the Offensive Line and the Defensive Line) can run multiple parallel
+              instances: when the work splits into independent slices, create one assignment per slice and set
+              "agent_name" to that same agent. Each assignment becomes its own parallel instance, up to the
+              agent's fan-out limit.
+            - Parallel instances must NOT overlap on the same files — give each a disjoint slice
+            - The Safety (Validator) runs AFTER the implementers and testers complete
             - Special Teams (DevOps) only gets an assignment if the task involves CI/CD/infra
             - Each assignment's "depends_on" is a list of assignment indices (0-based) that must complete first
             - Respond ONLY with the JSON, no other text
@@ -97,10 +109,11 @@ public partial class PlanParserService : IPlanParserService
 
         var response = await provider.RunAsync(new AgentContext
         {
-            ModelId = qb?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId(),
-            SystemPrompt = qb?.SystemPrompt ?? "You are the Quarterback. Produce structured plans.",
+            ModelId = !string.IsNullOrEmpty(modelOverride) ? modelOverride : (qb?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId()),
+            SystemPrompt = qb?.SystemPrompt ?? AgentDefaults.QuarterbackSystemPrompt,
             Prompt = structuredPrompt,
             WorkingDirectory = workingDirectory,
+            Effort = effort,
         }, ct);
 
         var result = response.FullText;

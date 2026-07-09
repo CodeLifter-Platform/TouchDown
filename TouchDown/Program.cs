@@ -7,6 +7,7 @@ using TD.Application;
 using TD.Data;
 using TD.Hubs;
 using TD.Services;
+using TD.Services.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,10 +63,17 @@ builder.Services.AddScoped<TD.Areas.Drives.Monitor.IDrivesMonitorServiceDA, TD.A
 builder.Services.AddScoped<TD.Areas.Drives.Monitor.IDrivesMonitorService, TD.Areas.Drives.Monitor.DrivesMonitorService>();
 builder.Services.AddScoped<TD.Areas.Drives.Monitor.DrivesMonitorPageVM>();
 
+// User preferences (singleton — shared in-memory state across all components)
+builder.Services.AddSingleton<IUserPreferencesService, UserPreferencesService>();
+
+// Telemetry (scoped per-circuit; NullTelemetryService sends nothing — swap class when backend chosen)
+builder.Services.AddScoped<ITelemetryService, NullTelemetryService>();
+
 // Application services
 builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>(); // kept for ClaudeCodeProvider
 builder.Services.AddAgentProvider<ClaudeCodeProvider>();                           // registers IAgentProvider + ClaudeCodeProvider
 builder.Services.AddAgentProvider<CodexProvider>();                                // registers IAgentProvider + CodexProvider
+builder.Services.AddSingleton<IAgentProviderRegistry, AgentProviderRegistry>();
 builder.Services.AddSingleton<IGitWorktreeService, GitWorktreeService>();
 builder.Services.AddSingleton<ISharedDriveContext, SharedDriveContext>();
 builder.Services.AddSingleton<IPlanParserService, PlanParserService>();
@@ -74,12 +82,45 @@ builder.Services.AddTransient<StaleDriveCleanupJob>();
 
 var app = builder.Build();
 
-// Ensure database is created with seed data
+// Apply pending migrations (handles legacy EnsureCreated DBs)
 using (var scope = app.Services.CreateScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TDDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
-    await db.Database.EnsureCreatedAsync();
+
+    // If the DB has tables but no migration history (EnsureCreated legacy),
+    // seed the history so EF skips InitialCreate and only runs newer migrations.
+    var conn = db.Database.GetDbConnection();
+    await conn.OpenAsync();
+
+    await using (var cmd = conn.CreateCommand())
+    {
+        // Check if tables exist but InitialCreate hasn't been recorded
+        cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AgentTeams';";
+        var tablesExist = Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+
+        if (tablesExist)
+        {
+            // Ensure history table exists
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+                    "MigrationId" TEXT NOT NULL PRIMARY KEY,
+                    "ProductVersion" TEXT NOT NULL
+                );
+                """;
+            await cmd.ExecuteNonQueryAsync();
+
+            // Mark InitialCreate as applied if not already
+            cmd.CommandText = """
+                INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                VALUES ('20260323205938_InitialCreate', '10.0.5');
+                """;
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    await conn.CloseAsync();
+    await db.Database.MigrateAsync();
 }
 
 // Run Claude health check on startup

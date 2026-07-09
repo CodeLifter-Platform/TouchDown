@@ -3,6 +3,11 @@
     Describe what you want the team to accomplish. The Quarterback will review this in the Huddle before snapping the ball.
 </MudText>
 
+<MudTextField @bind-Value="Session.Name" Label="Drive Name (optional)" Variant="Variant.Outlined"
+              Placeholder="e.g. Checkout refactor, Fix login bug…"
+              Immediate="true" Counter="100" MaxLength="100" Class="mb-4"
+              HelperText="A friendly name to recognize this drive later. Defaults to the task if left blank." />
+
 <MudTextField @bind-Value="Session.TaskDescription" Label="Task Description" Variant="Variant.Outlined"
               Placeholder="Describe the task in detail. What should the team build, fix, or refactor?"
               Lines="8" Immediate="true" Counter="2000" MaxLength="2000" Class="mb-4" />
@@ -24,6 +29,10 @@
     <MudSimpleTable Dense="true" Hover="true">
         <tbody>
             <tr>
+                <td><MudText Typo="Typo.body2" Color="Color.Secondary">Name</MudText></td>
+                <td>@(string.IsNullOrWhiteSpace(Session.Name) ? "—" : Session.Name)</td>
+            </tr>
+            <tr>
                 <td><MudText Typo="Typo.body2" Color="Color.Secondary">Source</MudText></td>
                 <td>@(Session.SourceType == SourceType.GitRepo ? $"Git: {Path.GetFileName(Session.RepoPath ?? "")}" : $"Folder: {Session.RepoPath}")</td>
             </tr>
@@ -34,6 +43,15 @@
             <tr>
                 <td><MudText Typo="Typo.body2" Color="Color.Secondary">Team</MudText></td>
                 <td>@(Session.Team?.Name ?? "Not selected")</td>
+            </tr>
+            <tr>
+                <td><MudText Typo="Typo.body2" Color="Color.Secondary">Model</MudText></td>
+                <td>
+                    @(string.IsNullOrWhiteSpace(Session.ModelId) ? "Team defaults" : Session.ModelId) · @Session.Effort.ToDisplayName() effort
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @(Session.OverrideTeamConfig ? "Applied to the whole squad" : "Quarterback only — squad keeps team settings")
+                    </MudText>
+                </td>
             </tr>
             <tr>
                 <td><MudText Typo="Typo.body2" Color="Color.Secondary">Parallelism</MudText></td>

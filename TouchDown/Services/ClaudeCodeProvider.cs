@@ -21,9 +21,10 @@ public class ClaudeCodeProvider : IAgentProvider
 
     public IReadOnlyList<AgentModel> AvailableModels { get; } =
     [
-        new AgentModel { ModelId = ClaudeModel.Opus.ToModelId(),   DisplayName = "Claude Opus",   Description = "Most capable — use for complex reasoning" },
-        new AgentModel { ModelId = ClaudeModel.Sonnet.ToModelId(), DisplayName = "Claude Sonnet", Description = "Balanced speed & capability" },
-        new AgentModel { ModelId = ClaudeModel.Haiku.ToModelId(),  DisplayName = "Claude Haiku",  Description = "Fastest — best for simple tasks" },
+        new AgentModel { ModelId = "claude-opus-4-8",   DisplayName = "Claude Opus 4.8",   Description = "Most capable — best for complex reasoning" },
+        new AgentModel { ModelId = "claude-opus-4-7",   DisplayName = "Claude Opus 4.7",   Description = "Previous-gen Opus — strong agentic work" },
+        new AgentModel { ModelId = "claude-sonnet-4-6", DisplayName = "Claude Sonnet 4.6", Description = "Balanced speed & capability" },
+        new AgentModel { ModelId = "claude-haiku-4-5",  DisplayName = "Claude Haiku 4.5",  Description = "Fastest — best for simple tasks" },
     ];
 
     public ClaudeCodeProvider(
@@ -100,6 +101,8 @@ public class ClaudeCodeProvider : IAgentProvider
         DangerouslySkipPermissions = ctx.DangerouslySkipPermissions,
         AppendSystemPrompt = ctx.AppendSystemPrompt,
         MaxBudgetUsd = ctx.MaxBudgetUsd,
+        Effort = ctx.Effort,
+        DisallowedTools = ctx.DisallowedTools,
     };
 
     private static AgentStreamChunk MapChunk(ClaudeStreamChunk c) => new()

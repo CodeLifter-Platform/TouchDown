@@ -103,52 +103,34 @@ public class ClaudeHealthCheck : IClaudeHealthCheck, IHealthCheck
             };
         }
 
-        // Step 3: Check authentication by running a minimal prompt
+        // Step 3: Check authentication via `claude auth status --json`
         try
         {
-            var psi = new ProcessStartInfo
+            var authOutput = await RunCommandAsync("claude", "auth status --json", ct);
+            if (string.IsNullOrWhiteSpace(authOutput))
             {
-                FileName = "claude",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("--print");
-            psi.ArgumentList.Add("--model");
-            psi.ArgumentList.Add("haiku");
-            psi.ArgumentList.Add("--max-budget-usd");
-            psi.ArgumentList.Add("0.01");
-            psi.ArgumentList.Add("--output-format");
-            psi.ArgumentList.Add("json");
-            psi.Environment["CLAUDECODE"] = "";
-
-            var process = new Process { StartInfo = psi };
-            process.Start();
-
-            await process.StandardInput.WriteLineAsync("Respond with exactly: ok");
-            process.StandardInput.Close();
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-            var output = await process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
-            var stderr = await process.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await process.WaitForExitAsync(timeoutCts.Token);
-
-            if (process.ExitCode != 0)
-            {
-                var errorMsg = stderr.Length > 200 ? stderr[..200] : stderr;
-                _logger.LogWarning("Claude auth check failed (exit {Code}): {Error}", process.ExitCode, errorMsg);
-
                 return new ClaudeHealthStatus
                 {
                     IsInstalled = true,
                     IsAuthenticated = false,
                     Version = version,
                     CliPath = cliPath,
-                    Error = $"Auth check failed (exit {process.ExitCode}): {errorMsg}"
+                    Error = "Auth status returned empty output"
+                };
+            }
+
+            var authJson = JsonDocument.Parse(authOutput);
+            var loggedIn = authJson.RootElement.TryGetProperty("loggedIn", out var li) && li.GetBoolean();
+
+            if (!loggedIn)
+            {
+                return new ClaudeHealthStatus
+                {
+                    IsInstalled = true,
+                    IsAuthenticated = false,
+                    Version = version,
+                    CliPath = cliPath,
+                    Error = "Claude CLI is not logged in"
                 };
             }
 
@@ -170,7 +152,7 @@ public class ClaudeHealthCheck : IClaudeHealthCheck, IHealthCheck
                 IsAuthenticated = false,
                 Version = version,
                 CliPath = cliPath,
-                Error = "Auth check timed out after 30s"
+                Error = "Auth check timed out"
             };
         }
         catch (Exception ex)

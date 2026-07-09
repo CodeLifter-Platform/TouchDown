@@ -96,16 +96,38 @@
 
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private IGitWorktreeService GitService { get; set; } = null!;
 
     private async Task SnapDirectly()
     {
+        if (!await EnsureGitInitialized()) return;
         var driveId = await VM.SnapDirectly();
         if (driveId != null) Navigation.NavigateTo($"/drive/{driveId}");
     }
 
-    private void LaunchDrive(string driveId)
+    private async Task LaunchDrive(string driveId)
     {
         VM.CloseHuddle();
         Navigation.NavigateTo($"/drive/{driveId}");
+    }
+
+    /// <summary>
+    /// If the selected folder has no git repo, prompt the user to init one before launching.
+    /// Returns true if safe to proceed, false if the user cancelled.
+    /// </summary>
+    private async Task<bool> EnsureGitInitialized()
+    {
+        if (!VM.WorkspaceNeedsGitInit) return true;
+
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Initialize Git?",
+            "This folder doesn't have a git repository. Would you like to initialize one so the drive can track changes?",
+            yesText: "Init & Continue", cancelText: "Cancel");
+
+        if (result != true) return false;
+
+        await GitService.InitRepoAsync(VM.Session.RepoPath!);
+        return true;
     }
 }

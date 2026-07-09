@@ -7,7 +7,8 @@
         "launchBrowser": true,
         "applicationUrl": "http://localhost:5139",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "PATH": "/Users/a/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         }
       },
       "https": {
@@ -16,7 +17,8 @@
         "launchBrowser": true,
         "applicationUrl": "https://localhost:7184;http://localhost:5139",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "PATH": "/Users/a/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         }
       },
       "Docker Compose": {
