@@ -6,5 +6,6 @@ public enum AgentRole
     Worker,
     Validator,
     Tester,
-    DevOps
+    DevOps,
+    Researcher
 }

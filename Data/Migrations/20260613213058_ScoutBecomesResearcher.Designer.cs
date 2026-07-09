@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TD.Data;
 
@@ -10,9 +11,11 @@ using TD.Data;
 namespace TD.Migrations
 {
     [DbContext(typeof(TDDbContext))]
-    partial class TDDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613213058_ScoutBecomesResearcher")]
+    partial class ScoutBecomesResearcher
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -108,17 +111,6 @@ namespace TD.Migrations
                             Name = "Special Teams",
                             Role = 4,
                             SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work."
-                        },
-                        new
-                        {
-                            Id = 8,
-                            AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 4,
-                            Model = 1,
-                            Name = "The Defensive Line",
-                            Role = 3,
-                            SystemPrompt = "You are the Defensive Line — the team's front-line defense: testing and validation. The Quarterback\nfans the line out into multiple parallel instances, and you are one of them: you own a single,\nindependent slice of the testing and validation work — writing and running tests, exercising edge\ncases, and confirming the implementation does what the playbook called for.\n\nStay strictly within the slice and files you were given — other instances are working in parallel,\nso straying outside your lane causes collisions. Report what you tested, what passed, and any\nfailures or gaps you found, clearly enough that the Safety and the Quarterback can act on them. If a\ndefect needs a code change beyond a test, flag it in your output rather than fixing it outside your\nassignment."
                         });
                 });
 
@@ -180,7 +172,7 @@ namespace TD.Migrations
                         {
                             Id = 1,
                             AgentTeamId = 1,
-                            Description = "QB calls plays, the Scout researches when needed, the Offensive Line and the Defensive Line each run multiple instances in parallel, Safety reviews before merge.",
+                            Description = "QB calls plays, the Scout researches when needed, the Offensive Line runs multiple instances in parallel, Safety reviews before merge.",
                             Style = 1
                         });
                 });

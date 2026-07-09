@@ -17,6 +17,8 @@ public interface ITeamsIndexPageVM
     void BeginEdit(AgentMember member);
     void CancelEdit();
     Task SaveEdit(AgentMember member);
+    Task SaveMemberEffort(AgentMember member, AgentEffort effort);
+    Task SaveMemberModel(AgentMember member, ClaudeModel model);
 }
 
 public class TeamsIndexPageVMException : Exception
@@ -108,6 +110,38 @@ public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
         }
     }
 
+    public async Task SaveMemberEffort(AgentMember member, AgentEffort effort)
+    {
+        if (member.Effort == effort) return;
+        try
+        {
+            await _service.UpdateMemberEffortAsync(member.Id, effort);
+            member.Effort = effort; // reflect in the loaded roster
+            _snackbar.Add($"Set {member.Name}'s effort to {effort.ToDisplayName()}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save effort for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async Task SaveMemberModel(AgentMember member, ClaudeModel model)
+    {
+        if (member.Model == model) return;
+        try
+        {
+            await _service.UpdateMemberModelAsync(member.Id, model);
+            member.Model = model; // reflect in the loaded roster
+            _snackbar.Add($"Set {member.Name}'s model to {model.ToDisplayName()}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save model for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
     public static Color GetRoleColor(AgentRole role) => role switch
     {
         AgentRole.Leader => Color.Primary,
@@ -115,6 +149,7 @@ public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
         AgentRole.Validator => Color.Success,
         AgentRole.Tester => Color.Secondary,
         AgentRole.DevOps => Color.Warning,
+        AgentRole.Researcher => Color.Tertiary,
         _ => Color.Default
     };
 }

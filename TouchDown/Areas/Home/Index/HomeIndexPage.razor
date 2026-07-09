@@ -55,15 +55,16 @@
         <MudTable T="Drive" Items="@VM.RecentDrives" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
                   RowClass="cursor-pointer" OnRowClick="@(args => NavigateToDrive(args.Item))">
             <HeaderContent>
-                <MudTh>Drive ID</MudTh>
+                <MudTh>Name</MudTh>
                 <MudTh>Task</MudTh>
                 <MudTh>Team</MudTh>
                 <MudTh>Status</MudTh>
                 <MudTh>Created</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="ID">
-                    <MudText Typo="Typo.body2" Style="font-family: monospace;" Color="Color.Primary">@context.DriveId</MudText>
+                <MudTd DataLabel="Name">
+                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@context.DisplayName</MudText>
+                    <MudText Typo="Typo.caption" Style="font-family: monospace;" Color="Color.Secondary">@context.DriveId</MudText>
                 </MudTd>
                 <MudTd DataLabel="Task">@HomeIndexPageVM.TruncateTask(context.TaskDescription)</MudTd>
                 <MudTd DataLabel="Team">@(context.AgentTeam?.Name ?? "Unknown")</MudTd>

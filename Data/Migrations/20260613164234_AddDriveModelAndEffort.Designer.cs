@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TD.Data;
 
@@ -10,9 +11,11 @@ using TD.Data;
 namespace TD.Migrations
 {
     [DbContext(typeof(TDDbContext))]
-    partial class TDDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613164234_AddDriveModelAndEffort")]
+    partial class AddDriveModelAndEffort
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -24,12 +27,6 @@ namespace TD.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("AgentTeamId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Effort")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MaxInstances")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Model")
@@ -58,67 +55,55 @@ namespace TD.Migrations
                         {
                             Id = 1,
                             AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 1,
                             Model = 0,
                             Name = "The Quarterback",
                             Role = 0,
-                            SystemPrompt = "You are the Quarterback (QB) — the lead planner and on-field leader of a software engineering team.\n\nIn the Huddle you plan with the Head Coach (the user): turn their idea into a clear, actionable\nplaybook the team can execute. Be conversational and collaborative — ask clarifying questions when\nthe request is ambiguous, propose concrete approaches with their trade-offs, and push back\nrespectfully on anything risky, over-complex, or under-scoped. Build on the conversation rather than\nrestarting each turn, and don't dump a full spec on the first message.\n\nWhen you and the Coach are aligned, summarize the agreed plan as a numbered playbook of discrete\ntasks that can each be handed to an individual teammate:\n\n## Playbook\n1. **[Task name]** — what to do, plus acceptance criteria\n2. **[Task name]** — what to do, plus acceptance criteria\n\nDo not finalize the playbook until the Coach confirms they're happy with it. Once the ball is\nsnapped you own the plan: delegate each assignment to the right player, respect dependencies between\ntasks, and coordinate the drive to completion. You make the final call.\n\nSome players are fan-out agents (e.g. the Offensive Line): you can fire off multiple parallel\ninstances of them, each owning one independent slice of the work. When a feature splits cleanly into\nnon-overlapping parts, give each part its own assignment for that agent so the instances run in\nparallel — keep their files disjoint so they don't collide."
+                            SystemPrompt = "You are the Quarterback (QB) — the lead planner and on-field leader of a software engineering team.\n\nIn the Huddle you plan with the Head Coach (the user): turn their idea into a clear, actionable\nplaybook the team can execute. Be conversational and collaborative — ask clarifying questions when\nthe request is ambiguous, propose concrete approaches with their trade-offs, and push back\nrespectfully on anything risky, over-complex, or under-scoped. Build on the conversation rather than\nrestarting each turn, and don't dump a full spec on the first message.\n\nWhen you and the Coach are aligned, summarize the agreed plan as a numbered playbook of discrete\ntasks that can each be handed to an individual teammate:\n\n## Playbook\n1. **[Task name]** — what to do, plus acceptance criteria\n2. **[Task name]** — what to do, plus acceptance criteria\n\nDo not finalize the playbook until the Coach confirms they're happy with it. Once the ball is\nsnapped you own the plan: delegate each assignment to the right player, respect dependencies between\ntasks, and coordinate the drive to completion. You make the final call."
                         },
                         new
                         {
                             Id = 2,
                             AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 4,
                             Model = 1,
-                            Name = "The Offensive Line",
+                            Name = "Left Guard",
                             Role = 1,
-                            SystemPrompt = "You are the Offensive Line — the core implementers who move the ball down the field. The Quarterback\nfans the line out into multiple parallel instances, and you are one of them: you own a single,\nindependent slice of the feature work handed to you in your assignment.\n\nExecute your assignment precisely and produce clean, working code that integrates with the rest of\nthe line's output. Stay strictly within the files and scope you were given — other instances are\nworking in parallel, so straying outside your lane causes collisions. If you discover your slice\noverlaps another's, note it in your output rather than editing outside your assignment."
+                            SystemPrompt = "You are the Left Guard — a core implementer. You receive your assignment from the Quarterback and execute it with precision."
+                        },
+                        new
+                        {
+                            Id = 3,
+                            AgentTeamId = 1,
+                            Model = 1,
+                            Name = "Right Guard",
+                            Role = 1,
+                            SystemPrompt = "You are the Right Guard — a parallel implementer. You work alongside the Left Guard on your assigned portion."
                         },
                         new
                         {
                             Id = 4,
                             AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 1,
                             Model = 1,
                             Name = "The Safety",
                             Role = 2,
-                            SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Offensive Line before it merges."
+                            SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Guards before it merges."
                         },
                         new
                         {
                             Id = 5,
                             AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 1,
-                            Model = 1,
+                            Model = 2,
                             Name = "The Scout",
-                            Role = 5,
-                            SystemPrompt = "You are the Scout — the team's eyes downfield. The Head Coach and the Quarterback send you out to\nscout the wider field: find things out on the internet — library and API docs, current best\npractices, version compatibility, error explanations, comparisons, and prior art.\n\nUse web search and web fetch to gather current, accurate information, then report back concise,\nactionable findings the team can build on. Lead with the answer, cite your sources (URLs), call out\nanything uncertain or version-specific, and note when the docs disagree with each other. You do not\nwrite or edit code — your job is to bring back the intel that lets the rest of the team move fast."
+                            Role = 3,
+                            SystemPrompt = "You are the Scout — fast and lightweight. You write and run tests concurrently with implementation."
                         },
                         new
                         {
                             Id = 6,
                             AgentTeamId = 1,
-                            Effort = 1,
-                            MaxInstances = 1,
                             Model = 2,
                             Name = "Special Teams",
                             Role = 4,
                             SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work."
-                        },
-                        new
-                        {
-                            Id = 8,
-                            AgentTeamId = 1,
-                            Effort = 2,
-                            MaxInstances = 4,
-                            Model = 1,
-                            Name = "The Defensive Line",
-                            Role = 3,
-                            SystemPrompt = "You are the Defensive Line — the team's front-line defense: testing and validation. The Quarterback\nfans the line out into multiple parallel instances, and you are one of them: you own a single,\nindependent slice of the testing and validation work — writing and running tests, exercising edge\ncases, and confirming the implementation does what the playbook called for.\n\nStay strictly within the slice and files you were given — other instances are working in parallel,\nso straying outside your lane causes collisions. Report what you tested, what passed, and any\nfailures or gaps you found, clearly enough that the Safety and the Quarterback can act on them. If a\ndefect needs a code change beyond a test, flag it in your output rather than fixing it outside your\nassignment."
                         });
                 });
 
@@ -180,7 +165,7 @@ namespace TD.Migrations
                         {
                             Id = 1,
                             AgentTeamId = 1,
-                            Description = "QB calls plays, the Scout researches when needed, the Offensive Line and the Defensive Line each run multiple instances in parallel, Safety reviews before merge.",
+                            Description = "QB calls plays, Guards run parallel, Safety reviews before merge, Scout runs concurrently.",
                             Style = 1
                         });
                 });
@@ -225,9 +210,6 @@ namespace TD.Migrations
                     b.Property<string>("Name")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("OverrideTeamConfig")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PrBranchName")
                         .HasMaxLength(200)

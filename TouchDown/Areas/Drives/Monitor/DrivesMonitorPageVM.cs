@@ -4,6 +4,7 @@ using MudBlazor;
 using Serilog;
 using TD.Models;
 using TD.MVVM.ViewModels;
+using TD.Services;
 
 namespace TD.Areas.Drives.Monitor;
 
@@ -13,6 +14,7 @@ public interface IDrivesMonitorPageVM
     Dictionary<string, AgentStatusInfo> AgentStatuses { get; }
     List<LogEntry> Logs { get; }
     List<PlaySummaryVM> Plays { get; }
+    List<TurnVM> Turns { get; }
     string CurrentPhase { get; }
     string? DriveId { get; set; }
     Task LoadDriveAsync(string driveId);
@@ -23,6 +25,7 @@ public interface IDrivesMonitorPageVM
     void SetPlays(List<PlaySummaryVM> plays);
     void UpdatePlayStatus(int playId, string status, DateTime? startedAt, DateTime? completedAt);
     Task CancelDrive();
+    Task RenameDrive(string? name);
 }
 
 public class DrivesMonitorPageVMException : Exception
@@ -55,6 +58,9 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
     private List<PlaySummaryVM> _plays = [];
 
     [ObservableProperty]
+    private List<TurnVM> _turns = [];
+
+    [ObservableProperty]
     private string _currentPhase = "Starting";
 
     public string? DriveId { get; set; }
@@ -67,11 +73,22 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
             DriveId = driveId;
             Drive = await _service.GetDriveAsync(driveId);
 
+            // Label fan-out instances ("The Offensive Line #1", "#2", …) the same way the orchestrator does.
+            var instanceLabels = Drive?.Plays is { Count: > 0 } labelPlays
+                ? InstanceLabeler.Label(labelPlays.Select(p => new InstanceLabeler.PlayRef(
+                    p.Id, p.AssignedMemberId, p.AssignedMember?.Name ?? "Unknown", p.OrderIndex, p.AssignedMember?.MaxInstances ?? 1)))
+                : new Dictionary<int, string>();
+
             if (Drive?.AgentTeam?.Members != null)
             {
                 var statuses = new Dictionary<string, AgentStatusInfo>();
-                foreach (var member in Drive.AgentTeam.Members)
+                // Single-instance members each get one card; fan-out members surface as per-instance cards.
+                foreach (var member in Drive.AgentTeam.Members.Where(m => m.MaxInstances <= 1))
                     statuses[member.Name] = new AgentStatusInfo { Status = "Pending", Progress = 0 };
+                // A card per play instance — shows fan-out instances and reflects their status on replay.
+                if (Drive.Plays != null)
+                    foreach (var p in Drive.Plays)
+                        statuses[instanceLabels.GetValueOrDefault(p.Id, p.AssignedMember?.Name ?? "Unknown")] = PlayStatusToInfo(p.Status);
                 AgentStatuses = statuses;
             }
 
@@ -86,6 +103,22 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
                 }).ToList();
             }
 
+            if (Drive?.Turns is { Count: > 0 })
+            {
+                Turns = Drive.Turns
+                    .OrderBy(t => t.Timestamp).ThenBy(t => t.Id)
+                    .Select(t => new TurnVM
+                    {
+                        Phase = t.Phase,
+                        Role = t.Role,
+                        AgentName = t.AgentName ?? "",
+                        Content = t.Content,
+                        ToolsUsed = t.ToolsUsed,
+                        CostUsd = t.CostUsd,
+                        Timestamp = t.Timestamp
+                    }).ToList();
+            }
+
             if (Drive?.Plays is { Count: > 0 })
             {
                 Plays = Drive.Plays
@@ -93,7 +126,7 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
                     .Select(p => new PlaySummaryVM
                     {
                         Id = p.Id,
-                        AgentName = p.AssignedMember?.Name ?? "Unknown",
+                        AgentName = instanceLabels.GetValueOrDefault(p.Id, p.AssignedMember?.Name ?? "Unknown"),
                         Description = p.Description,
                         Status = p.Status,
                         StartedAt = p.StartedAt,
@@ -117,15 +150,21 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
 
     public void UpdateAgentStatus(string agentName, string status, int progress)
     {
-        if (AgentStatuses.ContainsKey(agentName))
+        // Add-or-update so fan-out instances ("The Offensive Line #3") appear as they fire off.
+        AgentStatuses = new Dictionary<string, AgentStatusInfo>(AgentStatuses)
         {
-            var updated = new Dictionary<string, AgentStatusInfo>(AgentStatuses)
-            {
-                [agentName] = new AgentStatusInfo { Status = status, Progress = progress }
-            };
-            AgentStatuses = updated;
-        }
+            [agentName] = new AgentStatusInfo { Status = status, Progress = progress }
+        };
     }
+
+    private static AgentStatusInfo PlayStatusToInfo(PlayStatus status) => status switch
+    {
+        PlayStatus.Completed => new() { Status = "Completed", Progress = 100 },
+        PlayStatus.Failed => new() { Status = "Failed", Progress = 100 },
+        PlayStatus.InProgress => new() { Status = "Running", Progress = 50 },
+        PlayStatus.Skipped => new() { Status = "Skipped", Progress = 100 },
+        _ => new() { Status = "Pending", Progress = 0 }
+    };
 
     public void SetPhase(string phase) => CurrentPhase = phase;
 
@@ -146,6 +185,24 @@ public partial class DrivesMonitorPageVM : VM, IDrivesMonitorPageVM, IAsyncDispo
             Drive.Status = status == "Touchdown" ? DriveStatus.Touchdown : DriveStatus.Turnover;
             Drive.CompletedAt = DateTime.UtcNow;
             NotifyStateChanged();
+        }
+    }
+
+    [RelayCommand]
+    public async Task RenameDrive(string? name)
+    {
+        if (DriveId == null || Drive == null) return;
+        _log.Information("Renaming drive {DriveId}", DriveId);
+        try
+        {
+            await _service.RenameDriveAsync(DriveId, name);
+            Drive.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+            NotifyStateChanged();
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to rename drive {DriveId}", DriveId);
+            throw new DrivesMonitorPageVMException($"Failed to rename drive '{DriveId}'", ex);
         }
     }
 
@@ -197,6 +254,17 @@ public class LogEntry
     public string AgentName { get; set; } = "";
     public string Message { get; set; } = "";
     public string Level { get; set; } = "Info";
+}
+
+public record TurnVM
+{
+    public TurnPhase Phase { get; init; }
+    public string Role { get; init; } = "";
+    public string AgentName { get; init; } = "";
+    public string Content { get; init; } = "";
+    public string? ToolsUsed { get; init; }
+    public double? CostUsd { get; init; }
+    public DateTime Timestamp { get; init; }
 }
 
 public record PlaySummaryVM

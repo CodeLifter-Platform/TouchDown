@@ -12,6 +12,12 @@ public record ClaudeRunOptions
     public bool DangerouslySkipPermissions { get; init; }
     public string? AppendSystemPrompt { get; init; }
     public double? MaxBudgetUsd { get; init; }
+
+    /// <summary>Effort level passed to <c>claude --effort</c> (low|medium|high|xhigh|max).</summary>
+    public string? Effort { get; init; }
+
+    /// <summary>Tools blocked via <c>--disallowedTools</c> (e.g. "Task"/"Agent" to prevent subagent spawning).</summary>
+    public List<string>? DisallowedTools { get; init; }
 }
 
 public record ClaudeStreamChunk
@@ -41,6 +47,16 @@ public interface IClaudeStreamingService
         string systemPrompt,
         string userMessage,
         string? workingDirectory = null,
+        string? effort = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Streams a research run with web tools enabled (WebSearch/WebFetch + read-only filesystem).</summary>
+    IAsyncEnumerable<string> StreamResearchAsync(
+        string modelId,
+        string systemPrompt,
+        string prompt,
+        string? workingDirectory = null,
+        string? effort = null,
         CancellationToken cancellationToken = default);
 
     Task<string> GetFullResponseAsync(

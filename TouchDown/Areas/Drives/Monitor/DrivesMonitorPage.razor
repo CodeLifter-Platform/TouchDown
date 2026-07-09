@@ -7,16 +7,49 @@
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
-<PageTitle>TD - Drive @DriveId</PageTitle>
+<PageTitle>TD - @(VM.Drive?.DisplayName ?? DriveId)</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large">
     <div class="d-flex justify-space-between align-center mb-4">
         <div class="d-flex align-center gap-3">
-            <MudText Typo="Typo.h5">Drive: <span style="font-family: monospace;">@DriveId</span></MudText>
+            @if (_editingName)
+            {
+                <MudTextField @bind-Value="_nameDraft" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Immediate="true" MaxLength="100" Style="min-width: 280px;"
+                              Placeholder="Name this drive…" OnKeyDown="NameKeyDown" Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Check" OnAdornmentClick="SaveName" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelEditName" />
+            }
+            else
+            {
+                <div>
+                    <div class="d-flex align-center gap-1">
+                        <MudText Typo="Typo.h5">@(VM.Drive?.DisplayName ?? DriveId)</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       Disabled="@(VM.Drive == null)" OnClick="StartEditName" />
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-family: monospace;">@DriveId</MudText>
+                </div>
+            }
             @if (VM.Drive != null)
             {
                 <MudChip T="string" Size="Size.Small" Color="@DrivesMonitorPageVM.GetStatusColor(VM.Drive.Status)" Variant="Variant.Filled">
                     @VM.Drive.Status
+                </MudChip>
+                @if (!string.IsNullOrWhiteSpace(VM.Drive.ModelId))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                             Icon="@Icons.Material.Filled.Memory">
+                        @VM.Drive.ModelId
+                    </MudChip>
+                }
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                         Icon="@Icons.Material.Filled.Bolt">
+                    @VM.Drive.Effort.ToDisplayName() effort
+                </MudChip>
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text"
+                         Icon="@(VM.Drive.OverrideTeamConfig ? Icons.Material.Filled.Groups : Icons.Material.Filled.Person)">
+                    @(VM.Drive.OverrideTeamConfig ? "whole squad" : "QB only")
                 </MudChip>
             }
         </div>
@@ -82,6 +115,9 @@
             <PostDriveActions Drive="VM.Drive" />
         }
 
+        @* ── Conversation (huddle chat, QB plan, agent turns) ── *@
+        <ConversationPanel Turns="VM.Turns" />
+
         <MudPaper Outlined="true" Class="mt-4">
             <MudToolBar Dense="true">
                 <MudIcon Icon="@Icons.Material.Filled.Terminal" Class="mr-2" Size="Size.Small" />
@@ -121,6 +157,28 @@
     [Inject] private IDialogService DialogService { get; set; } = null!;
 
     private HubConnection? hubConnection;
+    private bool _editingName;
+    private string _nameDraft = "";
+
+    private void StartEditName()
+    {
+        _nameDraft = VM.Drive?.Name ?? "";
+        _editingName = true;
+    }
+
+    private void CancelEditName() => _editingName = false;
+
+    private async Task SaveName()
+    {
+        await VM.RenameDriveCommand.ExecuteAsync(_nameDraft);
+        _editingName = false;
+    }
+
+    private async Task NameKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveName();
+        else if (e.Key == "Escape") CancelEditName();
+    }
 
     protected override async Task OnInitializedAsync()
     {

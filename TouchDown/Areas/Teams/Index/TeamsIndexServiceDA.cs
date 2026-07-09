@@ -9,6 +9,8 @@ public interface ITeamsIndexServiceDA
 {
     Task<List<AgentTeam>> GetAllTeamsAsync();
     Task UpdateMemberPromptAsync(int memberId, string systemPrompt);
+    Task UpdateMemberEffortAsync(int memberId, AgentEffort effort);
+    Task UpdateMemberModelAsync(int memberId, ClaudeModel model);
 }
 
 public class TeamsIndexServiceDAException : Exception
@@ -61,6 +63,42 @@ public class TeamsIndexServiceDA : ITeamsIndexServiceDA
         {
             _log.Error(ex, "Failed to update system prompt for member {MemberId}", memberId);
             throw new TeamsIndexServiceDAException($"Failed to update system prompt for member {memberId}", ex);
+        }
+    }
+
+    public async Task UpdateMemberEffortAsync(int memberId, AgentEffort effort)
+    {
+        _log.Debug("Updating effort for member {MemberId}", memberId);
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var member = await db.AgentMembers.FindAsync(memberId)
+                ?? throw new TeamsIndexServiceDAException($"Agent member {memberId} not found");
+            member.Effort = effort;
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is not TeamsIndexServiceDAException)
+        {
+            _log.Error(ex, "Failed to update effort for member {MemberId}", memberId);
+            throw new TeamsIndexServiceDAException($"Failed to update effort for member {memberId}", ex);
+        }
+    }
+
+    public async Task UpdateMemberModelAsync(int memberId, ClaudeModel model)
+    {
+        _log.Debug("Updating model for member {MemberId}", memberId);
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var member = await db.AgentMembers.FindAsync(memberId)
+                ?? throw new TeamsIndexServiceDAException($"Agent member {memberId} not found");
+            member.Model = model;
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is not TeamsIndexServiceDAException)
+        {
+            _log.Error(ex, "Failed to update model for member {MemberId}", memberId);
+            throw new TeamsIndexServiceDAException($"Failed to update model for member {memberId}", ex);
         }
     }
 }

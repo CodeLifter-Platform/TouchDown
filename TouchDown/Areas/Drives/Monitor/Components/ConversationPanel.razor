@@ -1,0 +1,122 @@
+@using System.Text.Json
+@using TD.Models
+@using TD.Areas.Drives.Monitor
+
+<MudPaper Outlined="true" Class="mt-4">
+    <MudToolBar Dense="true">
+        <MudIcon Icon="@Icons.Material.Filled.Forum" Class="mr-2" Size="Size.Small" />
+        <MudText Typo="Typo.subtitle2">Conversation</MudText>
+        <MudSpacer />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@Turns.Count turns</MudText>
+    </MudToolBar>
+    <MudDivider />
+
+    @if (Turns.Count == 0)
+    {
+        <div class="pa-4">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">No conversation recorded for this drive yet.</MudText>
+        </div>
+    }
+    else
+    {
+        @* ── Huddle chat (Head Coach ↔ Quarterback) ── *@
+        @if (HuddleTurns.Count > 0)
+        {
+            <div class="pa-3">
+                @foreach (var turn in HuddleTurns)
+                {
+                    var isUser = turn.Role == "user";
+                    <div class="d-flex @(isUser ? "justify-end" : "justify-start") mb-2">
+                        <MudPaper Class="pa-3" MaxWidth="85%"
+                                  Style="@(isUser
+                                      ? "background: rgba(59,130,246,0.12);"
+                                      : "background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);")">
+                            <div class="d-flex justify-space-between gap-4 mb-1">
+                                <MudText Typo="Typo.caption" Style="font-weight: 600;">
+                                    @(isUser ? "Head Coach" : (string.IsNullOrEmpty(turn.AgentName) ? "Quarterback" : turn.AgentName))
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@turn.Timestamp.ToString("HH:mm:ss")</MudText>
+                            </div>
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word;">@turn.Content</MudText>
+                        </MudPaper>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ── Quarterback plan (comment) + per-agent execution turns ── *@
+        @if (DetailTurns.Count > 0)
+        {
+            <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="px-2 pb-2">
+                @foreach (var turn in DetailTurns)
+                {
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <div class="d-flex align-center gap-2" style="width: 100%;">
+                                <MudIcon Icon="@PhaseIcon(turn)" Color="@PhaseColor(turn)" Size="Size.Small" />
+                                <MudText Typo="Typo.body2" Style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    @TurnTitle(turn)
+                                </MudText>
+                                @foreach (var tool in ParseTools(turn.ToolsUsed))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">@tool</MudChip>
+                                }
+                                @if (turn.CostUsd is > 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">$@turn.CostUsd.Value.ToString("F4")</MudText>
+                                }
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@turn.Timestamp.ToString("HH:mm:ss")</MudText>
+                            </div>
+                        </TitleContent>
+                        <ChildContent>
+                            <pre style="white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; font-size: 0.8rem; background: var(--mud-palette-background-gray); padding: 12px; border-radius: 4px; margin: 0;">@turn.Content</pre>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public List<TurnVM> Turns { get; set; } = [];
+
+    private List<TurnVM> HuddleTurns => Turns.Where(t => t.Phase == TurnPhase.Huddle).ToList();
+    private List<TurnVM> DetailTurns => Turns.Where(t => t.Phase != TurnPhase.Huddle).ToList();
+
+    private static string TurnTitle(TurnVM turn)
+    {
+        if (turn.Role == "comment")
+            return $"{(string.IsNullOrEmpty(turn.AgentName) ? "Quarterback" : turn.AgentName)} — Plan";
+
+        var side = turn.Role == "user" ? "prompt" : "response";
+        return $"{turn.AgentName} · {side}";
+    }
+
+    private static string PhaseIcon(TurnVM turn) => turn.Role switch
+    {
+        "comment" => Icons.Material.Filled.Lightbulb,
+        "user" => Icons.Material.Filled.Outbox,
+        _ => Icons.Material.Filled.SmartToy
+    };
+
+    private static Color PhaseColor(TurnVM turn) => turn.Role switch
+    {
+        "comment" => Color.Tertiary,
+        "user" => Color.Secondary,
+        _ => Color.Primary
+    };
+
+    private static IEnumerable<string> ParseTools(string? toolsJson)
+    {
+        if (string.IsNullOrWhiteSpace(toolsJson)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(toolsJson) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+}

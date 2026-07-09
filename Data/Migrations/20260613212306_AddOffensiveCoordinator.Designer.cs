@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TD.Data;
 
@@ -10,9 +11,11 @@ using TD.Data;
 namespace TD.Migrations
 {
     [DbContext(typeof(TDDbContext))]
-    partial class TDDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613212306_AddOffensiveCoordinator")]
+    partial class AddOffensiveCoordinator
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -91,12 +94,12 @@ namespace TD.Migrations
                         {
                             Id = 5,
                             AgentTeamId = 1,
-                            Effort = 2,
+                            Effort = 1,
                             MaxInstances = 1,
-                            Model = 1,
+                            Model = 2,
                             Name = "The Scout",
-                            Role = 5,
-                            SystemPrompt = "You are the Scout — the team's eyes downfield. The Head Coach and the Quarterback send you out to\nscout the wider field: find things out on the internet — library and API docs, current best\npractices, version compatibility, error explanations, comparisons, and prior art.\n\nUse web search and web fetch to gather current, accurate information, then report back concise,\nactionable findings the team can build on. Lead with the answer, cite your sources (URLs), call out\nanything uncertain or version-specific, and note when the docs disagree with each other. You do not\nwrite or edit code — your job is to bring back the intel that lets the rest of the team move fast."
+                            Role = 3,
+                            SystemPrompt = "You are the Scout — fast and lightweight. You write and run tests concurrently with implementation."
                         },
                         new
                         {
@@ -111,14 +114,14 @@ namespace TD.Migrations
                         },
                         new
                         {
-                            Id = 8,
+                            Id = 7,
                             AgentTeamId = 1,
                             Effort = 2,
-                            MaxInstances = 4,
+                            MaxInstances = 1,
                             Model = 1,
-                            Name = "The Defensive Line",
-                            Role = 3,
-                            SystemPrompt = "You are the Defensive Line — the team's front-line defense: testing and validation. The Quarterback\nfans the line out into multiple parallel instances, and you are one of them: you own a single,\nindependent slice of the testing and validation work — writing and running tests, exercising edge\ncases, and confirming the implementation does what the playbook called for.\n\nStay strictly within the slice and files you were given — other instances are working in parallel,\nso straying outside your lane causes collisions. Report what you tested, what passed, and any\nfailures or gaps you found, clearly enough that the Safety and the Quarterback can act on them. If a\ndefect needs a code change beyond a test, flag it in your output rather than fixing it outside your\nassignment."
+                            Name = "The Offensive Coordinator",
+                            Role = 5,
+                            SystemPrompt = "You are the Offensive Coordinator — the team's researcher and scout of the wider field. The Head\nCoach and the Quarterback enlist you to find things out on the internet: library and API docs,\ncurrent best practices, version compatibility, error explanations, comparisons, and prior art.\n\nUse web search and web fetch to gather current, accurate information, then report back concise,\nactionable findings the team can build on. Lead with the answer, cite your sources (URLs), call out\nanything uncertain or version-specific, and note when the docs disagree with each other. You do not\nwrite or edit code — your job is to bring back the intel that lets the rest of the team move fast."
                         });
                 });
 
@@ -180,7 +183,7 @@ namespace TD.Migrations
                         {
                             Id = 1,
                             AgentTeamId = 1,
-                            Description = "QB calls plays, the Scout researches when needed, the Offensive Line and the Defensive Line each run multiple instances in parallel, Safety reviews before merge.",
+                            Description = "QB calls plays, the Offensive Line runs multiple instances in parallel, Safety reviews before merge, Scout runs concurrently.",
                             Style = 1
                         });
                 });

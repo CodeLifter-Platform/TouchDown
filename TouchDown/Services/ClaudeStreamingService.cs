@@ -150,6 +150,7 @@ public class ClaudeStreamingService : IClaudeStreamingService
         string systemPrompt,
         string userMessage,
         string? workingDirectory = null,
+        string? effort = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var options = new ClaudeRunOptions
@@ -157,7 +158,9 @@ public class ClaudeStreamingService : IClaudeStreamingService
             ModelId = modelId,
             SystemPrompt = systemPrompt,
             Prompt = userMessage,
-            WorkingDirectory = workingDirectory
+            WorkingDirectory = workingDirectory,
+            Effort = effort,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools
         };
 
         await foreach (var chunk in StreamAsync(options, cancellationToken))
@@ -167,6 +170,36 @@ public class ClaudeStreamingService : IClaudeStreamingService
             else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
                 // Surface CLI failures instead of swallowing them — otherwise the
                 // huddle just shows an empty bubble and the QB looks like it never started.
+                yield return $"\n\n⚠️ {chunk.Result}";
+        }
+    }
+
+    public async IAsyncEnumerable<string> StreamResearchAsync(
+        string modelId,
+        string systemPrompt,
+        string prompt,
+        string? workingDirectory = null,
+        string? effort = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var options = new ClaudeRunOptions
+        {
+            ModelId = modelId,
+            SystemPrompt = systemPrompt,
+            Prompt = prompt,
+            WorkingDirectory = workingDirectory,
+            Effort = effort,
+            // Read-only web + filesystem tools, allowlisted so the headless run never blocks on a prompt.
+            AllowedTools = ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
+            DangerouslySkipPermissions = true,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools,
+        };
+
+        await foreach (var chunk in StreamAsync(options, cancellationToken))
+        {
+            if (chunk.TextDelta != null)
+                yield return chunk.TextDelta;
+            else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
                 yield return $"\n\n⚠️ {chunk.Result}";
         }
     }
@@ -238,6 +271,12 @@ public class ClaudeStreamingService : IClaudeStreamingService
             "--model", options.ModelId
         };
 
+        if (!string.IsNullOrEmpty(options.Effort))
+        {
+            args.Add("--effort");
+            args.Add(options.Effort);
+        }
+
         if (!string.IsNullOrEmpty(options.SystemPrompt))
         {
             args.Add("--system-prompt");
@@ -254,6 +293,12 @@ public class ClaudeStreamingService : IClaudeStreamingService
         {
             args.Add("--allowedTools");
             args.AddRange(options.AllowedTools);
+        }
+
+        if (options.DisallowedTools is { Count: > 0 })
+        {
+            args.Add("--disallowedTools");
+            args.AddRange(options.DisallowedTools);
         }
 
         if (options.DangerouslySkipPermissions)

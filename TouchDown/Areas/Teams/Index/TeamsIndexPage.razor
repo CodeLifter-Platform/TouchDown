@@ -34,6 +34,7 @@
                                     <th>Name</th>
                                     <th>Role</th>
                                     <th>Model</th>
+                                    <th>Effort</th>
                                     <th>System Prompt</th>
                                 </tr>
                             </thead>
@@ -49,13 +50,41 @@
                                                 }
                                                 @member.Name
                                             </div>
+                                            @if (member.MaxInstances > 1)
+                                            {
+                                                <MudTooltip Text="The Quarterback can fan this agent out into multiple parallel instances.">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text"
+                                                             Icon="@Icons.Material.Filled.Groups" Class="ma-0">
+                                                        fan-out · up to @member.MaxInstances
+                                                    </MudChip>
+                                                </MudTooltip>
+                                            }
                                         </td>
                                         <td>
                                             <MudChip T="string" Size="Size.Small" Color="@TeamsIndexPageVM.GetRoleColor(member.Role)" Variant="Variant.Outlined">
                                                 @member.Role
                                             </MudChip>
                                         </td>
-                                        <td><MudText Typo="Typo.body2">@member.Model.ToDisplayName()</MudText></td>
+                                        <td>
+                                            <MudSelect T="ClaudeModel" Value="member.Model" Dense="true" Margin="Margin.Dense"
+                                                       Variant="Variant.Outlined" Style="min-width: 170px;"
+                                                       ValueChanged="@(m => VM.SaveMemberModel(member, m))">
+                                                @foreach (var cm in Enum.GetValues<ClaudeModel>())
+                                                {
+                                                    <MudSelectItem T="ClaudeModel" Value="@cm">@cm.ToDisplayName()</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                        </td>
+                                        <td>
+                                            <MudSelect T="AgentEffort" Value="member.Effort" Dense="true" Margin="Margin.Dense"
+                                                       Variant="Variant.Outlined" Style="min-width: 130px;"
+                                                       ValueChanged="@(e => VM.SaveMemberEffort(member, e))">
+                                                @foreach (var eff in Enum.GetValues<AgentEffort>())
+                                                {
+                                                    <MudSelectItem T="AgentEffort" Value="@eff">@eff.ToDisplayName()</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                        </td>
                                         <td style="min-width: 340px;">
                                             @if (VM.EditingMemberId == member.Id)
                                             {

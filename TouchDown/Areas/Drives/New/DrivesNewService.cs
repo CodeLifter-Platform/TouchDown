@@ -4,7 +4,7 @@ using TD.Services;
 
 namespace TD.Areas.Drives.New;
 
-public record AvailableProvider(string ProviderId, string DisplayName);
+public record AvailableProvider(string ProviderId, string DisplayName, IReadOnlyList<AgentModel> Models);
 
 public interface IDrivesNewService
 {
@@ -12,7 +12,10 @@ public interface IDrivesNewService
     Task<List<AgentTeam>> GetAvailableTeamsAsync();
     Task<AgentTeam> SaveCustomTeamAsync(AgentTeam team);
     Task<Drive> StartDriveAsync(AgentSession session);
-    IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, CancellationToken ct = default);
+    Task<Drive> CreateDraftDriveAsync(AgentSession session);
+    Task AddTurnAsync(DriveTurn turn);
+    IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
+    IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
 }
 
 public class DrivesNewServiceException : Exception
@@ -42,7 +45,7 @@ public class DrivesNewService : IDrivesNewService
     {
         _log.Debug("Getting available providers");
         var available = await _providerRegistry.GetAvailableAsync();
-        return available.Select(p => new AvailableProvider(p.ProviderId, p.DisplayName)).ToList();
+        return available.Select(p => new AvailableProvider(p.ProviderId, p.DisplayName, p.AvailableModels)).ToList();
     }
 
     public async Task<List<AgentTeam>> GetAvailableTeamsAsync()
@@ -87,9 +90,31 @@ public class DrivesNewService : IDrivesNewService
         }
     }
 
-    public IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, CancellationToken ct = default)
+    public async Task<Drive> CreateDraftDriveAsync(AgentSession session)
     {
-        _log.Debug("Streaming QB response with model {ModelId}", modelId);
-        return _claude.StreamResponseAsync(modelId, systemPrompt, prompt, workingDir, ct);
+        _log.Debug("Creating draft drive for huddle conversation");
+        try
+        {
+            return await _da.CreateDraftDriveAsync(session);
+        }
+        catch (Exception ex) when (ex is not DrivesNewServiceException)
+        {
+            _log.Error(ex, "Failed to create draft drive");
+            throw new DrivesNewServiceException("Failed to create draft drive", ex);
+        }
+    }
+
+    public Task AddTurnAsync(DriveTurn turn) => _da.AddTurnAsync(turn);
+
+    public IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
+    {
+        _log.Debug("Streaming QB response with model {ModelId} effort {Effort}", modelId, effort);
+        return _claude.StreamResponseAsync(modelId, systemPrompt, prompt, workingDir, effort, ct);
+    }
+
+    public IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
+    {
+        _log.Debug("Streaming Offensive Coordinator research with model {ModelId}", modelId);
+        return _claude.StreamResearchAsync(modelId, systemPrompt, prompt, workingDir, effort, ct);
     }
 }

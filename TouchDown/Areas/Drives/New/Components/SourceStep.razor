@@ -30,6 +30,50 @@ else
     </MudToggleGroup>
 }
 
+@* ───── Primary Model & Effort ───── *@
+@if (CurrentProviderModels.Count > 0)
+{
+    <div class="d-flex gap-3 mb-4 flex-wrap">
+        <MudSelect T="string" Value="Session.ModelId" ValueChanged="SetModel" Label="Primary Model"
+                   Variant="Variant.Outlined" Dense="true" Style="min-width: 280px;"
+                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Memory"
+                   HelperText="The Quarterback's model for this drive">
+            @foreach (var m in CurrentProviderModels)
+            {
+                <MudSelectItem T="string" Value="@m.ModelId">
+                    <div class="d-flex flex-column">
+                        <MudText Typo="Typo.body2">@m.DisplayName</MudText>
+                        @if (!string.IsNullOrEmpty(m.Description))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@m.Description</MudText>
+                        }
+                    </div>
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="AgentEffort" Value="Session.Effort" ValueChanged="SetEffort" Label="Effort"
+                   Variant="Variant.Outlined" Dense="true" Style="min-width: 170px;"
+                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Bolt"
+                   HelperText="Reasoning depth">
+            @foreach (var e in Enum.GetValues<AgentEffort>())
+            {
+                <MudSelectItem T="AgentEffort" Value="@e">@e.ToDisplayName()</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    <MudCheckBox T="bool" Value="Session.OverrideTeamConfig" ValueChanged="SetOverride"
+                 Color="Color.Primary" Dense="true" Class="mt-n2">
+        Apply this model &amp; effort to the whole squad
+    </MudCheckBox>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-4" Style="margin-left: 30px;">
+        @(Session.OverrideTeamConfig
+            ? "Every agent runs on the Quarterback's model and effort."
+            : "Each squad agent keeps its own model and effort from the Teams page; the Quarterback still uses the choices above.")
+    </MudText>
+}
+
 <MudDivider Class="mb-4" />
 
 <MudToggleGroup T="SourceType" Value="Session.SourceType" ValueChanged="SetSourceType"
@@ -202,8 +246,9 @@ else
             if (string.IsNullOrEmpty(Session.ProviderId) && availableProviders.Count > 0)
             {
                 Session.ProviderId = availableProviders[0].ProviderId;
-                await OnChanged.InvokeAsync();
             }
+            EnsureModelSelected();
+            await OnChanged.InvokeAsync();
         }
         finally
         {
@@ -211,9 +256,39 @@ else
         }
     }
 
+    private IReadOnlyList<AgentModel> CurrentProviderModels =>
+        availableProviders.FirstOrDefault(p => p.ProviderId == Session.ProviderId)?.Models ?? [];
+
+    private void EnsureModelSelected()
+    {
+        var models = CurrentProviderModels;
+        if (models.Count == 0) { Session.ModelId = null; return; }
+        if (string.IsNullOrEmpty(Session.ModelId) || models.All(m => m.ModelId != Session.ModelId))
+            Session.ModelId = models[0].ModelId;
+    }
+
     private async Task SetProvider(string providerId)
     {
         Session.ProviderId = providerId;
+        EnsureModelSelected();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetModel(string? modelId)
+    {
+        Session.ModelId = modelId;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetEffort(AgentEffort effort)
+    {
+        Session.Effort = effort;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetOverride(bool value)
+    {
+        Session.OverrideTeamConfig = value;
         await OnChanged.InvokeAsync();
     }
 

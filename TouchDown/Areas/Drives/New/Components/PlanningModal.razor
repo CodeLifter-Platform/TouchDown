@@ -16,14 +16,12 @@
     <div class="huddle-chat">
         @foreach (var msg in vm.Messages)
         {
-            <div class="d-flex @(msg.Role == "user" ? "justify-end" : "justify-start") mb-2">
-                <MudPaper Class="pa-3" MaxWidth="85%"
-                          Style="@(msg.Role == "user"
-                              ? "background: rgba(59,130,246,0.12);"
-                              : "background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);")">
-                    <div class="d-flex justify-space-between mb-1">
+            var isUser = msg.Role == "user";
+            <div class="d-flex @(isUser ? "justify-end" : "justify-start") mb-2">
+                <MudPaper Class="pa-3" MaxWidth="85%" Style="@BubbleStyle(msg.Role)">
+                    <div class="d-flex justify-space-between gap-4 mb-1">
                         <MudText Typo="Typo.caption" Style="font-weight: 600;">
-                            @(msg.Role == "user" ? "Coach" : Session.Team?.GetLeader()?.Name ?? "QB")
+                            @(msg.Name ?? (isUser ? "Coach" : "QB"))
                         </MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">@msg.Timestamp.ToString("HH:mm")</MudText>
                     </div>
@@ -34,11 +32,11 @@
 
         @if (vm.IsStreaming)
         {
+            var agentStreaming = vm.StreamingRole != (Session.Team?.GetLeader()?.Name ?? "QB");
             <div class="d-flex justify-start mb-2">
-                <MudPaper Class="pa-3" MaxWidth="85%"
-                          Style="background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);">
+                <MudPaper Class="pa-3" MaxWidth="85%" Style="@BubbleStyle(agentStreaming ? "agent" : "quarterback")">
                     <MudText Typo="Typo.caption" Style="font-weight: 600;" Class="mb-1">
-                        @(Session.Team?.GetLeader()?.Name ?? "QB")
+                        @vm.StreamingRole
                     </MudText>
                     <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@vm.StreamingContent<span class="cursor">|</span></MudText>
                 </MudPaper>
@@ -50,9 +48,23 @@
 
     <div class="pa-3">
         <MudTextField @bind-Value="vm.UserInput" Label="" Variant="Variant.Outlined" Lines="2"
-                      Placeholder="Chat with the QB to refine the playbook..."
+                      Placeholder="@(vm.HasResearcher ? "Chat with the QB, or type a question and hit Research…" : "Chat with the QB to refine the playbook...")"
                       Disabled="@vm.IsStreaming" Immediate="true" OnKeyDown="HandleKeyDown" Class="mb-2" />
         <div class="d-flex justify-end gap-2">
+            <MudButton Variant="Variant.Outlined" OnClick="() => vm.RollCallCommand.ExecuteAsync(null)"
+                       Disabled="@vm.IsStreaming"
+                       StartIcon="@Icons.Material.Filled.Groups">
+                Roll Call
+            </MudButton>
+            @if (vm.HasResearcher)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Tertiary"
+                           OnClick="() => vm.EnlistResearcherCommand.ExecuteAsync(null)"
+                           Disabled="@(vm.IsStreaming || string.IsNullOrWhiteSpace(vm.UserInput))"
+                           StartIcon="@Icons.Material.Filled.TravelExplore">
+                    Research
+                </MudButton>
+            }
             <MudButton Variant="Variant.Outlined" OnClick="() => vm.SendMessageCommand.ExecuteAsync(null)"
                        Disabled="@(vm.IsStreaming || string.IsNullOrWhiteSpace(vm.UserInput))"
                        StartIcon="@Icons.Material.Filled.Send">
@@ -117,4 +129,12 @@
         if (e is { Key: "Enter", ShiftKey: false })
             await vm.SendMessageCommand.ExecuteAsync(null);
     }
+
+    private static string BubbleStyle(string role) => role switch
+    {
+        "user" => "background: rgba(59,130,246,0.12);",
+        "quarterback" => "background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.2);",
+        // coordinator, rollcall, and any other agent voice
+        _ => "background: rgba(20,184,166,0.10); border: 1px solid rgba(20,184,166,0.30);"
+    };
 }
