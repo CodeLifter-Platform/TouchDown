@@ -1,0 +1,24 @@
+name: Tests
+
+# PR gate: build the solution on a linux runner. No publishing, no releases —
+# those live in build.yml behind workflow_dispatch.
+# No test project exists yet — swap `dotnet build` for `dotnet test` when one lands.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]       # post-merge sanity check on the same cheap path
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest  # linux minutes are the cheapest tier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build TouchDown.sln -c Release
