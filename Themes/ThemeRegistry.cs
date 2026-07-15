@@ -6,6 +6,7 @@ public static class ThemeRegistry
 {
     public static readonly Dictionary<string, MudTheme> All = new()
     {
+        ["TouchDown"] = TouchDownTheme.Theme,
         ["Yeti"] = YetiTheme.Theme,
         ["Frost"] = FrostTheme.Theme,
         ["Silver Linen"] = SilverLinenTheme.Theme,
@@ -14,5 +15,5 @@ public static class ThemeRegistry
         ["Midnight Ember"] = MidnightEmberTheme.Theme,
     };
 
-    public static MudTheme Default => FrostTheme.Theme;
+    public static MudTheme Default => TouchDownTheme.Theme;
 }
