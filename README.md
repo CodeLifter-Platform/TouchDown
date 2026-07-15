@@ -21,8 +21,8 @@ There are no manual tags — releases are produced by tooling, two ways:
   publishes the GitHub Release. TouchDown ships a server artifact, so there is no
   code signing or notarization step.
 - **Actions `workflow_dispatch` (on demand):** the full cloud pipeline
-  (linux publish + release). Ordinary pushes and PRs run only the cheap linux
-  build job — cloud artifact builds are opt-in.
+  (linux publish + release). PRs and main pushes run only the `Tests`
+  workflow — a cheap linux build job — so cloud artifact builds are opt-in.
 
 Two repo variables control the version
 (`Settings → Secrets and variables → Actions → Variables`):
@@ -32,8 +32,8 @@ Two repo variables control the version
   builds version as e.g. `0.9.42-beta` and the GitHub Release is flagged prerelease;
   clear it to ship clean versions like `1.0.57`.
 
-Pushes to other branches (and PRs) build versioned artifacts
-(`0.9.42-pre.42+abc1234`) but never release. The release job prepends a row to the
+Dispatching the pipeline from a non-main ref builds versioned artifacts
+(`0.9.42-pre.42+abc1234`) but never releases. The release job prepends a row to the
 [release history](#release-history) table below, commits it as
 `chore: release <version> [skip ci]`, tags `v<version>`, and publishes the GitHub
 Release with generated notes.

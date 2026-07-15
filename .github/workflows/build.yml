@@ -1,18 +1,13 @@
 name: Build & Release
 
 on:
-  push:
-    branches: ['**']       # Cheap path: version + linux build only
-  pull_request:
-    branches: [main]       # Same cheap path for PRs
   workflow_dispatch:        # Full pipeline (publish artifact + release) on demand
 
 # ── Cost model ────────────────────────────────────────────────────
 # TouchDown is a Blazor Server web app, so everything runs on cheap ubuntu
-# runners. Pushes/PRs run ONLY the build job (no test project exists yet — swap
-# `dotnet build` for `dotnet test` when one lands). The publish/release jobs run
-# on manual dispatch — day-to-day releases happen for free from a dev machine
-# via scripts/release-local.sh.
+# runners. This pipeline runs ONLY on manual dispatch — day-to-day releases
+# happen for free from a dev machine via scripts/release-local.sh.
+# PR/push building lives in tests.yml.
 # ──────────────────────────────────────────────────────────────────
 
 permissions:
@@ -53,7 +48,7 @@ jobs:
           LEVEL="${{ vars.RELEASE_LEVEL || '' }}"
           PATCH="${{ github.run_number }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          IS_MAIN="${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+          IS_MAIN="${{ github.ref == 'refs/heads/main' }}"
 
           if [ "$IS_MAIN" = "true" ]; then
             if [ -n "$LEVEL" ]; then
@@ -79,7 +74,8 @@ jobs:
             echo "Release: ${IS_RELEASE} · Prerelease: ${IS_PRERELEASE}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Build gates everything (no test project yet — dotnet build) ─
+  # ── Build gates the release pipeline (no test project yet) ─────
+  # (PR gating happens in tests.yml; this re-runs before any dispatch build)
   test:
     runs-on: ubuntu-latest  # linux minutes are the cheapest tier
     steps:
@@ -91,7 +87,6 @@ jobs:
 
   # ── Linux server artifact (self-contained publish zip) ─────────
   build-linux:
-    if: github.event_name == 'workflow_dispatch'
     needs: [version, test]
     runs-on: ubuntu-latest
     env:
