@@ -55,6 +55,22 @@
         "pipeCwd": "${workspaceFolder}",
         "quoteArgs": false
       }
+    },
+    {
+      "name": "TD (Docker Attach)",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickRemoteProcess}",
+      "sourceFileMap": {
+        "/src": "${workspaceFolder}"
+      },
+      "pipeTransport": {
+        "pipeProgram": "docker",
+        "pipeArgs": ["exec", "-i", "touchdown-touchdown-1"],
+        "debuggerPath": "/vsdbg/vsdbg",
+        "pipeCwd": "${workspaceFolder}",
+        "quoteArgs": false
+      }
     }
   ]
 }
