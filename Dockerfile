@@ -20,6 +20,7 @@ COPY --from=build /app/publish .
 # every recreate.
 RUN mkdir -p /app/data
 ENV ConnectionStrings__TouchDown="Data Source=/app/data/touchdown.db"
+ENV ConnectionStrings__Hangfire="/app/data/hangfire.db"
 VOLUME ["/app/data"]
 
 ENTRYPOINT ["dotnet", "TD.dll"]

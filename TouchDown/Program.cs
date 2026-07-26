@@ -1,5 +1,5 @@
 using Hangfire;
-using Hangfire.MemoryStorage;
+using Hangfire.Storage.SQLite;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
 using MudBlazor.Services;
@@ -45,9 +45,14 @@ builder.Services.AddDbContextFactory<TDDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("TouchDown")
                       ?? "Data Source=touchdown.db"));
 
-// Hangfire
-builder.Services.AddHangfire(config =>
-    config.UseMemoryStorage());
+// Hangfire — SQLite storage rather than in-memory, so recurring job schedules and job
+// history survive a restart. Its file sits alongside the app database (the container
+// points both at the mounted volume).
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSQLiteStorage(builder.Configuration.GetConnectionString("Hangfire") ?? "hangfire.db"));
 builder.Services.AddHangfireServer();
 
 // Health checks
@@ -210,10 +215,14 @@ app.MapHealthChecks("/health");
 // SignalR hub
 app.MapHub<AgentHub>("/agentHub");
 
-// Hangfire dashboard (dev only) + recurring jobs
-if (app.Environment.IsDevelopment())
+// Hangfire dashboard. Off outside Development by default, and loopback-only wherever it
+// is on — the dashboard can trigger, requeue and delete jobs, and the app has no auth.
+if (app.Configuration.GetValue("Hangfire:EnableDashboard", app.Environment.IsDevelopment()))
 {
-    app.MapHangfireDashboard("/hangfire");
+    app.MapHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = [new LocalRequestsOnlyDashboardFilter()]
+    });
 }
 
 // Stale drive cleanup every 5 minutes.

@@ -55,21 +55,36 @@ public class TDDbContext : DbContext
             entity.HasIndex(t => new { t.DriveId, t.Timestamp });
         });
 
-        // Seed the default Playbook team
-        var team = new { Id = 1, Name = "The Playbook", Description = "The default TD agent team.", IsDefault = true };
-        modelBuilder.Entity<AgentTeam>().HasData(team);
+        // Seed the default Playbook team from the single canonical definition, so the seeded
+        // rows and AgentTeam.CreateThePlaybook() cannot drift apart (they previously had).
+        modelBuilder.Entity<AgentTeam>().HasData(new
+        {
+            Id = PlaybookSeed.TeamId,
+            Name = PlaybookSeed.TeamName,
+            Description = PlaybookSeed.TeamDescription,
+            IsDefault = true
+        });
 
         modelBuilder.Entity<AgentMember>().HasData(
-            new { Id = 1, Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = AgentDefaults.QuarterbackSystemPrompt, AgentTeamId = 1 },
-            new { Id = 2, Name = "The Offensive Line", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 4, SystemPrompt = AgentDefaults.OffensiveLineSystemPrompt, AgentTeamId = 1 },
-            new { Id = 4, Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Offensive Line before it merges.", AgentTeamId = 1 },
-            new { Id = 5, Name = "The Scout", Role = AgentRole.Researcher, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 1, SystemPrompt = AgentDefaults.ScoutSystemPrompt, AgentTeamId = 1 },
-            new { Id = 6, Name = "Special Teams", Role = AgentRole.DevOps, Model = ClaudeModel.Haiku, Effort = AgentEffort.Medium, MaxInstances = 1, SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work.", AgentTeamId = 1 },
-            new { Id = 8, Name = "The Defensive Line", Role = AgentRole.Tester, Model = ClaudeModel.Sonnet, Effort = AgentEffort.High, MaxInstances = 4, SystemPrompt = AgentDefaults.DefensiveLineSystemPrompt, AgentTeamId = 1 }
+            PlaybookSeed.Members.Select(m => new
+            {
+                m.Id,
+                m.Name,
+                m.Role,
+                m.Model,
+                m.Effort,
+                m.MaxInstances,
+                m.SystemPrompt,
+                AgentTeamId = PlaybookSeed.TeamId
+            }).ToArray()
         );
 
-        modelBuilder.Entity<CommunicationRule>().HasData(
-            new { Id = 1, Style = CommStyle.LeaderGated, Description = "QB calls plays, the Scout researches when needed, the Offensive Line and the Defensive Line each run multiple instances in parallel, Safety reviews before merge.", AgentTeamId = 1 }
-        );
+        modelBuilder.Entity<CommunicationRule>().HasData(new
+        {
+            Id = PlaybookSeed.CommunicationRuleId,
+            Style = PlaybookSeed.CommunicationStyle,
+            Description = PlaybookSeed.CommunicationRuleDescription,
+            AgentTeamId = PlaybookSeed.TeamId
+        });
     }
 }
