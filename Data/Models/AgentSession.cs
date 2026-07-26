@@ -39,26 +39,3 @@ public class HuddleMessage
     public string Content { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
-
-public class AgentMessage
-{
-    public string DriveId { get; set; } = string.Empty;
-    public string FromAgent { get; set; } = string.Empty;
-    public string ToAgent { get; set; } = "all";
-    public PlayType Type { get; set; }
-    public string Content { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-}
-
-public enum PlayType
-{
-    Assignment,
-    PlayComplete,
-    HandoffRequest,
-    TurnoverAlert,
-    TouchdownSignal,
-    StatusUpdate,
-    ReviewRequest,
-    ReviewApproved,
-    ReviewRejected
-}

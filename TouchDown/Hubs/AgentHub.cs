@@ -23,12 +23,6 @@ public class AgentHub : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, driveId);
     }
 
-    public async Task BroadcastPlay(AgentMessage message)
-    {
-        _logger.LogInformation("[{DriveId}] {From} -> {To}: {Type}", message.DriveId, message.FromAgent, message.ToAgent, message.Type);
-        await Clients.Group(message.DriveId).SendAsync("ReceivePlay", message);
-    }
-
     public async Task SendLog(string driveId, string agentName, string message, string level = "Info")
     {
         await Clients.Group(driveId).SendAsync("ReceiveLog", new
