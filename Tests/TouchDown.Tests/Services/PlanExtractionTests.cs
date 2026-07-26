@@ -25,7 +25,10 @@ public class PlanExtractionTests
     private static PlanParserService CreateParser() => new(NullLogger<PlanParserService>.Instance);
 
     /// <summary>The provider throws if called, so a passing test proves nothing was re-prompted.</summary>
-    private static Task<QuarterbackPlan> Extract(string huddleOutput) =>
+    private static async Task<QuarterbackPlan> Extract(string huddleOutput) =>
+        (await ExtractResult(huddleOutput)).Plan;
+
+    private static Task<PlanResult> ExtractResult(string huddleOutput) =>
         CreateParser().ParsePlanFromHuddleAsync(
             huddleOutput,
             AgentTeam.CreateThePlaybook(),
@@ -87,12 +90,12 @@ public class PlanExtractionTests
         var parser = CreateParser();
         var provider = new FakeAgentProvider(ValidPlanJson);
 
-        var plan = await parser.ParsePlanFromHuddleAsync(
+        var plan = (await parser.ParsePlanFromHuddleAsync(
             """{"summary":"nothing to do","assignments":[]}""",
             AgentTeam.CreateThePlaybook(),
             "add a login page",
             provider,
-            workingDirectory: null);
+            workingDirectory: null)).Plan;
 
         Assert.Single(provider.Calls);
         Assert.Equal(2, plan.Assignments.Count);
@@ -103,12 +106,12 @@ public class PlanExtractionTests
     {
         var provider = new FakeAgentProvider(ValidPlanJson);
 
-        var plan = await CreateParser().ParsePlanFromHuddleAsync(
+        var plan = (await CreateParser().ParsePlanFromHuddleAsync(
             "I think we should probably start with the form and then review it.",
             AgentTeam.CreateThePlaybook(),
             "add a login page",
             provider,
-            workingDirectory: null);
+            workingDirectory: null)).Plan;
 
         Assert.Single(provider.Calls);
         Assert.Equal("Ship the login page", plan.Summary);
@@ -120,12 +123,12 @@ public class PlanExtractionTests
         // Both extraction attempts fail; the drive still has to have something to run.
         var provider = new FakeAgentProvider("I'm not going to give you JSON today.");
 
-        var plan = await CreateParser().ParsePlanFromHuddleAsync(
+        var plan = (await CreateParser().ParsePlanFromHuddleAsync(
             "no json here either",
             AgentTeam.CreateThePlaybook(),
             "add a login page",
             provider,
-            workingDirectory: null);
+            workingDirectory: null)).Plan;
 
         Assert.NotEmpty(plan.Assignments);
         Assert.Contains("Fallback", plan.Summary);
@@ -139,8 +142,8 @@ public class PlanExtractionTests
     {
         var provider = new FakeAgentProvider("nope");
 
-        var plan = await CreateParser().ParsePlanFromHuddleAsync(
-            "nope", AgentTeam.CreateThePlaybook(), "task", provider, null);
+        var plan = (await CreateParser().ParsePlanFromHuddleAsync(
+            "nope", AgentTeam.CreateThePlaybook(), "task", provider, null)).Plan;
 
         var tester = plan.Assignments.Single(a => a.AgentRole == "Tester");
         var worker = plan.Assignments.First(a => a.AgentRole == "Worker");
@@ -168,9 +171,9 @@ public class PlanExtractionTests
     {
         var provider = new FakeAgentProvider(ValidPlanJson);
 
-        var plan = await CreateParser().ParsePlanFromHuddleAsync(
+        var plan = (await CreateParser().ParsePlanFromHuddleAsync(
             "```json\n{\"summary\": \"broken\", \"assignments\": [ {{{ ]\n```",
-            AgentTeam.CreateThePlaybook(), "task", provider, null);
+            AgentTeam.CreateThePlaybook(), "task", provider, null)).Plan;
 
         Assert.Equal("Ship the login page", plan.Summary);
     }

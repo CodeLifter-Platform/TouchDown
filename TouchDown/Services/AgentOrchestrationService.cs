@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TD.Data;
 using TD.Hubs;
 using TD.Models;
+using TD.Services.Telemetry;
 
 namespace TD.Services;
 
@@ -24,6 +25,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     private readonly ISharedDriveContext _context;
     private readonly IPlanParserService _planParser;
     private readonly IHubContext<AgentHub> _hub;
+    private readonly ITelemetryService _telemetry;
     private readonly ILogger<AgentOrchestrationService> _logger;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeDrives = new();
 
@@ -34,6 +36,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         ISharedDriveContext context,
         IPlanParserService planParser,
         IHubContext<AgentHub> hub,
+        ITelemetryService telemetry,
         ILogger<AgentOrchestrationService> logger)
     {
         _dbFactory = dbFactory;
@@ -42,6 +45,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         _context = context;
         _planParser = planParser;
         _hub = hub;
+        _telemetry = telemetry;
         _logger = logger;
     }
 
@@ -166,19 +170,61 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
     private async Task ExecuteDriveAsync(Drive drive, AgentTeam team, CancellationToken ct)
     {
+        var startedAt = DateTime.UtcNow;
+        var planSource = (PlanSource?)null;
+        var turnoverReason = (TurnoverReason?)null;
+
+        using var driveScope = _telemetry.StartDriveScope(drive.DriveId, new Dictionary<string, object>
+        {
+            [TelemetryAttribute.TaskDescription] = drive.TaskDescription,
+            [TelemetryAttribute.WorkspaceMode] = drive.WorkspaceMode.ToString(),
+            [TelemetryAttribute.MaxParallelism] = drive.MaxParallelism,
+            [TelemetryAttribute.TeamName] = team.Name,
+            [TelemetryAttribute.ProviderId] = drive.ProviderId ?? "",
+            [TelemetryAttribute.ModelId] = drive.ModelId ?? "",
+            [TelemetryAttribute.Effort] = drive.Effort.ToString(),
+            [TelemetryAttribute.RepoPath] = drive.RepoPath ?? "",
+            [TelemetryAttribute.Branch] = drive.Branch ?? "",
+        });
+
         try
         {
             // Resolve the provider selected by the user
-            var provider = !string.IsNullOrEmpty(drive.ProviderId)
-                ? _providerRegistry.GetById(drive.ProviderId)
-                : (await _providerRegistry.GetAvailableAsync(ct)).FirstOrDefault()
-                  ?? throw new InvalidOperationException("No agent providers are available on this machine.");
+            IAgentProvider provider;
+            try
+            {
+                provider = !string.IsNullOrEmpty(drive.ProviderId)
+                    ? _providerRegistry.GetById(drive.ProviderId)
+                    : (await _providerRegistry.GetAvailableAsync(ct)).FirstOrDefault()
+                      ?? throw new InvalidOperationException("No agent providers are available on this machine.");
+            }
+            catch
+            {
+                turnoverReason = TurnoverReason.ProviderUnavailable;
+                throw;
+            }
 
             _logger.LogInformation("Drive {DriveId} using provider: {Provider}", drive.DriveId, provider.DisplayName);
 
             // Phase 0: Prepare workspace
             await SendPhaseChanged(drive.DriveId, "Preparing Workspace", ct);
-            var workDir = await PrepareWorkspaceAsync(drive, ct);
+            string workDir;
+            var workspaceStart = DateTime.UtcNow;
+            try
+            {
+                workDir = await PrepareWorkspaceAsync(drive, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                turnoverReason = TurnoverReason.WorkspaceSetupFailed;
+                await _telemetry.TrackErrorAsync(ex, nameof(PrepareWorkspaceAsync), new Dictionary<string, object>
+                {
+                    [TelemetryAttribute.WorkspaceMode] = drive.WorkspaceMode.ToString(),
+                });
+                throw;
+            }
+
+            await _telemetry.TrackTimingAsync(TelemetryEvent.PerfWorktreeSetup, DateTime.UtcNow - workspaceStart);
             await _context.InitializeAsync(drive.DriveId, workDir, ct);
 
             await SendLog(drive.DriveId, "System", $"Drive started. Workspace: {workDir}", ct);
@@ -193,15 +239,39 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                 ? drive.ModelId
                 : team.GetLeader()?.Model.ToModelId() ?? ClaudeModel.Opus.ToModelId();
 
-            var plan = await _planParser.ParsePlanFromHuddleAsync(
-                drive.HuddlePlan ?? drive.TaskDescription,
-                team,
-                drive.TaskDescription,
-                provider,
-                workDir,
-                drive.ModelId,
-                ResolveEffort(provider, qbModelId, drive.Effort),
-                ct);
+            PlanResult planResult;
+            try
+            {
+                planResult = await _planParser.ParsePlanFromHuddleAsync(
+                    drive.HuddlePlan ?? drive.TaskDescription,
+                    team,
+                    drive.TaskDescription,
+                    provider,
+                    workDir,
+                    drive.ModelId,
+                    ResolveEffort(provider, qbModelId, drive.Effort),
+                    ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                turnoverReason = TurnoverReason.PlanningFailed;
+                await _telemetry.TrackErrorAsync(ex, nameof(IPlanParserService));
+                throw;
+            }
+
+            var plan = planResult.Plan;
+            planSource = planResult.Source;
+
+            // How the plan was obtained is the strongest available signal of plan quality:
+            // a Fallback plan ignores the huddle conversation entirely, yet the drive runs
+            // identically, so nothing else would reveal the difference.
+            driveScope.SetAttribute(TelemetryAttribute.PlanSource, planResult.Source.ToString());
+            driveScope.SetAttribute(TelemetryAttribute.PlanSummary, plan.Summary);
+            await _telemetry.TrackEventAsync(TelemetryEvent.PlanResolved, new Dictionary<string, object>
+            {
+                [TelemetryAttribute.PlanSource] = planResult.Source.ToString(),
+                [TelemetryAttribute.PlayCount] = plan.Assignments.Count,
+            });
 
             // Save plan to shared context
             var planJson = JsonSerializer.Serialize(plan, new JsonSerializerOptions
@@ -246,10 +316,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             await _hub.Clients.Group(drive.DriveId).SendAsync("DriveCompleted",
                 new { drive.DriveId, Status = "Touchdown" }, ct);
             await SendLog(drive.DriveId, "System", "TOUCHDOWN! Drive completed successfully.", ct);
+
+            driveScope.SetAttribute(TelemetryAttribute.DriveStatus, nameof(DriveStatus.Touchdown));
+            await ReportDriveOutcomeAsync(drive, DriveStatus.Touchdown, startedAt, planSource, null, null);
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("Drive {DriveId} was cancelled", drive.DriveId);
+            driveScope.SetAttribute(TelemetryAttribute.DriveStatus, nameof(DriveStatus.Cancelled));
+            await ReportDriveOutcomeAsync(
+                drive, DriveStatus.Cancelled, startedAt, planSource, TurnoverReason.Cancelled, null);
         }
         catch (Exception ex)
         {
@@ -258,10 +334,57 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             await _hub.Clients.Group(drive.DriveId).SendAsync("DriveCompleted",
                 new { drive.DriveId, Status = "Turnover" }, ct);
             await SendLog(drive.DriveId, "System", $"TURNOVER! Drive failed: {ex.Message}", ct);
+
+            driveScope.SetError(ex);
+            driveScope.SetAttribute(TelemetryAttribute.DriveStatus, nameof(DriveStatus.Turnover));
+            await ReportDriveOutcomeAsync(
+                drive, DriveStatus.Turnover, startedAt, planSource,
+                turnoverReason ?? TurnoverReason.Unknown, ex);
         }
         finally
         {
             _activeDrives.TryRemove(drive.DriveId, out _);
+        }
+    }
+
+    /// <summary>
+    /// Emits the drive outcome. Every failure used to collapse into the bare Turnover status,
+    /// which said nothing about what actually went wrong.
+    /// </summary>
+    private async Task ReportDriveOutcomeAsync(
+        Drive drive, DriveStatus status, DateTime startedAt,
+        PlanSource? planSource, TurnoverReason? reason, Exception? error)
+    {
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            var plays = await db.Plays.Where(p => p.DriveId == drive.Id).ToListAsync();
+            var cost = await db.DriveTurns
+                .Where(t => t.DriveId == drive.Id && t.CostUsd != null)
+                .SumAsync(t => t.CostUsd);
+
+            await _telemetry.TrackDriveOutcomeAsync(new DriveResult
+            {
+                DriveId = drive.DriveId,
+                Status = status,
+                PlayCount = plays.Count,
+                FailedPlayCount = plays.Count(p => p.Status == PlayStatus.Failed),
+                DurationMs = (long)(DateTime.UtcNow - startedAt).TotalMilliseconds,
+                CostUsd = cost,
+                ErrorType = error?.GetType().Name,
+                ErrorMessage = error?.Message,
+                TurnoverReason = reason,
+                WorkspaceMode = drive.WorkspaceMode,
+                MaxParallelism = drive.MaxParallelism,
+                PlanSource = planSource,
+                ProviderId = drive.ProviderId,
+                ModelId = drive.ModelId,
+            });
+        }
+        catch (Exception ex)
+        {
+            // Reporting an outcome must never change the outcome.
+            _logger.LogDebug(ex, "Failed to report drive outcome for {DriveId}", drive.DriveId);
         }
     }
 
@@ -292,6 +415,29 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         // Group by waves: wave 0 = no deps, wave 1 = depends on wave 0, etc.
         var waves = BuildExecutionWaves(plays.Count, dependencyMap);
 
+        // The schedule's shape tells you whether the parallelism machinery is doing anything.
+        // If every wave is one play wide, MaxParallelism and the fan-out limits are decorative.
+        await _telemetry.TrackEventAsync(TelemetryEvent.PlanWaveShape, new Dictionary<string, object>
+        {
+            [TelemetryAttribute.PlayCount] = plays.Count,
+            [TelemetryAttribute.WaveCount] = waves.Count,
+            [TelemetryAttribute.MaxWaveWidth] = waves.Count == 0 ? 0 : waves.Max(w => w.Count),
+            [TelemetryAttribute.MaxParallelism] = drive.MaxParallelism,
+        });
+
+        if (HasDependencyCycle(plays.Count, dependencyMap))
+        {
+            // The scheduler breaks cycles by dumping the remainder into a final wave, which
+            // otherwise happens silently and hides a Quarterback planning defect.
+            await _telemetry.TrackEventAsync(TelemetryEvent.PlanDependencyCycle, new Dictionary<string, object>
+            {
+                [TelemetryAttribute.PlayCount] = plays.Count,
+            });
+            _logger.LogWarning("Drive {DriveId} plan contains a dependency cycle; it was broken to avoid deadlock", drive.DriveId);
+        }
+
+        ReportFanOutOverlaps(plan, waves);
+
         for (int waveIndex = 0; waveIndex < waves.Count; waveIndex++)
         {
             var wave = waves[waveIndex];
@@ -309,6 +455,78 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         }
     }
 
+    /// <summary>
+    /// True when the dependency graph cannot be fully ordered. <see cref="BuildExecutionWaves"/>
+    /// silently breaks such cycles, so this detects the same condition for reporting.
+    /// </summary>
+    internal static bool HasDependencyCycle(int playCount, Dictionary<int, List<int>> deps)
+    {
+        var completed = new HashSet<int>();
+        var remaining = Enumerable.Range(0, playCount).ToHashSet();
+
+        while (remaining.Count > 0)
+        {
+            var ready = remaining
+                .Where(i => !deps.TryGetValue(i, out var d) || d.All(completed.Contains))
+                .ToList();
+
+            // Nothing can run but work remains — the rest is knotted together.
+            if (ready.Count == 0) return true;
+
+            foreach (var i in ready)
+            {
+                remaining.Remove(i);
+                completed.Add(i);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Reports assignments scheduled to run concurrently that declared the same files.
+    /// Fan-out instances are told to take disjoint slices, but nothing enforces it, so two
+    /// instances editing one file would otherwise just look like flaky results.
+    /// </summary>
+    private void ReportFanOutOverlaps(QuarterbackPlan plan, List<List<int>> waves)
+    {
+        for (var waveIndex = 0; waveIndex < waves.Count; waveIndex++)
+        {
+            var wave = waves[waveIndex];
+            if (wave.Count < 2) continue;
+
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var overlaps = 0;
+
+            foreach (var assignmentIndex in wave)
+            {
+                if (assignmentIndex >= plan.Assignments.Count) continue;
+                var files = plan.Assignments[assignmentIndex].Files;
+                if (files is null) continue;
+
+                foreach (var file in files)
+                {
+                    if (string.IsNullOrWhiteSpace(file)) continue;
+                    if (seen.TryGetValue(file, out var otherIndex) && otherIndex != assignmentIndex)
+                        overlaps++;
+                    else
+                        seen[file] = assignmentIndex;
+                }
+            }
+
+            if (overlaps == 0) continue;
+
+            _logger.LogWarning(
+                "Wave {Wave} has {Count} overlapping file claim(s) between parallel plays", waveIndex, overlaps);
+
+            _ = _telemetry.TrackEventAsync(TelemetryEvent.PlanFanOutOverlap, new Dictionary<string, object>
+            {
+                ["overlap_count"] = overlaps,
+                [TelemetryAttribute.WaveIndex] = waveIndex,
+            });
+        }
+    }
+
     private async Task RunPlayWithContextAsync(
         Drive drive, Play play, int playIndex, string workDir,
         SemaphoreSlim semaphore, ConcurrentDictionary<int, PlayResult> results,
@@ -318,6 +536,18 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         // The instance label ("The Offensive Line #2") is this run's identity for status, logs,
         // turns, and — crucially — its shared-context output file, so parallel instances don't collide.
         var agentName = instanceLabels.GetValueOrDefault(play.Id, play.AssignedMember?.Name ?? "Unknown");
+
+        // The play span nests under the drive span, so the waterfall shows which plays really
+        // overlapped rather than only which ones were scheduled to.
+        using var playScope = _telemetry.StartPlayScope(agentName, new Dictionary<string, object>
+        {
+            [TelemetryAttribute.PlayId] = play.Id,
+            [TelemetryAttribute.PlayIndex] = playIndex,
+            [TelemetryAttribute.PlayDescription] = play.Description,
+            [TelemetryAttribute.AgentName] = agentName,
+            [TelemetryAttribute.AgentRole] = play.AssignedMember?.Role.ToString() ?? "Unknown",
+        });
+
         try
         {
             var member = play.AssignedMember!;
@@ -353,6 +583,20 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             var modelId = useOverride ? drive.ModelId! : member.Model.ToModelId();
             var effortLevel = useOverride ? drive.Effort : member.Effort;
 
+            // The agent span carries model/effort/cost, so cost and latency can be attributed
+            // per role, model and effort rather than only per drive.
+            using var agentScope = _telemetry.StartAgentScope(agentName, new Dictionary<string, object>
+            {
+                [TelemetryAttribute.AgentName] = agentName,
+                [TelemetryAttribute.AgentRole] = member.Role.ToString(),
+                [TelemetryAttribute.ModelId] = modelId,
+                [TelemetryAttribute.Effort] = effortLevel.ToString(),
+                [TelemetryAttribute.ProviderId] = provider.ProviderId,
+            });
+
+            var agentStart = DateTime.UtcNow;
+            var firstTokenReported = false;
+
             await foreach (var chunk in provider.StreamAsync(
                 new AgentContext
                 {
@@ -369,6 +613,15 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             {
                 if (chunk.TextDelta != null)
                 {
+                    if (!firstTokenReported)
+                    {
+                        firstTokenReported = true;
+                        agentScope.AddEvent(TelemetryEvent.PerfAgentFirstToken, new Dictionary<string, object>
+                        {
+                            [TelemetryAttribute.DurationMs] = (long)(DateTime.UtcNow - agentStart).TotalMilliseconds,
+                        });
+                    }
+
                     fullText.Append(chunk.TextDelta);
                     if (chunk.TextDelta.Contains('\n'))
                         await SendLog(drive.DriveId, agentName, chunk.TextDelta.Trim(), ct);
@@ -394,6 +647,12 @@ public class AgentOrchestrationService : IAgentOrchestrationService
                 CostUsd = costUsd,
                 ToolsUsed = toolsUsed,
             };
+
+            agentScope.SetAttribute(TelemetryAttribute.AgentOutput, result.FullText);
+            agentScope.SetAttribute(TelemetryAttribute.ToolsUsed, string.Join(",", toolsUsed));
+            agentScope.SetAttribute(TelemetryAttribute.DurationMs, (long)(DateTime.UtcNow - agentStart).TotalMilliseconds);
+            if (costUsd.HasValue) agentScope.SetAttribute(TelemetryAttribute.CostUsd, costUsd.Value);
+            if (isError) agentScope.SetError("The agent reported an error result");
 
             // Persist the agent's reply as a conversation turn (captures both success and error output).
             await AddTurnAsync(drive.Id, play.Id, TurnPhase.Execution, "assistant", agentName,
@@ -426,18 +685,32 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             await UpdateAgentStatus(drive.DriveId, agentName, "Completed", 100, ct);
             await SendPlayStatusUpdate(drive.DriveId, play, agentName, ct);
             await SavePlayStatus(play, ct);
+
+            playScope.SetAttribute(TelemetryAttribute.PlayStatus, nameof(PlayStatus.Completed));
+            if (result.CostUsd.HasValue) playScope.SetAttribute(TelemetryAttribute.CostUsd, result.CostUsd.Value);
         }
         catch (OperationCanceledException)
         {
+            playScope.SetAttribute(TelemetryAttribute.PlayStatus, nameof(PlayStatus.Skipped));
             throw;
         }
-        catch (Exception ex) when (ex is not InvalidOperationException)
+        catch (Exception ex)
         {
+            playScope.SetAttribute(TelemetryAttribute.PlayStatus, nameof(PlayStatus.Failed));
+            playScope.SetError(ex);
+
+            if (ex is InvalidOperationException) throw;
+
             play.Status = PlayStatus.Failed;
             play.CompletedAt = DateTime.UtcNow;
             await SendLog(drive.DriveId, agentName, $"Error: {ex.Message}", ct);
             await UpdateAgentStatus(drive.DriveId, agentName, "Failed", 100, ct);
             await SavePlayStatus(play, ct);
+            await _telemetry.TrackErrorAsync(ex, nameof(RunPlayWithContextAsync), new Dictionary<string, object>
+            {
+                [TelemetryAttribute.AgentName] = agentName,
+                [TelemetryAttribute.PlayId] = play.Id,
+            });
             throw;
         }
         finally

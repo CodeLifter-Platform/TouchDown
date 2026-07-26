@@ -18,38 +18,46 @@
             </div>
 
             <MudText Typo="Typo.body1" Class="mb-4">
-                TouchDown is in beta. With your permission, we collect anonymous
-                usage data to understand how the tool is being used and where it can improve.
+                TouchDown is in beta. Agent runs are non-deterministic, so a failure is rarely
+                reproducible from a description alone. With your permission, TouchDown records
+                <strong>detailed diagnostics</strong> about each Drive so problems can be
+                diagnosed from the trace rather than guessed at.
             </MudText>
 
             <MudGrid Spacing="3" Class="mb-4">
                 <MudItem xs="12" sm="6">
                     <div class="d-flex align-center mb-2 consent-section-label">
                         <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" Class="consent-section-icon" />
-                        <MudText Typo="Typo.subtitle2" Color="Color.Success">We collect:</MudText>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Success">What is recorded:</MudText>
                     </div>
                     <MudList T="string" Dense="true">
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Which wizard steps you complete</MudListItem>
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Whether Drives succeed or fail, and the type of error if they fail</MudListItem>
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">How long Drives take and how many Huddle turns happen</MudListItem>
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Unhandled errors (type only, never your code)</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Your task description, and the repository path and branch name</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">What each agent was asked to do and the output it produced</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Errors in full, including messages and stack traces</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Drive outcomes, timings, model and effort choices, and cost</MudListItem>
                     </MudList>
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <div class="d-flex align-center mb-2 consent-section-label">
-                        <MudIcon Icon="@Icons.Material.Filled.Block" Color="Color.Error" Size="Size.Small" Class="consent-section-icon" />
-                        <MudText Typo="Typo.subtitle2" Color="Color.Error">We never collect:</MudText>
+                        <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Info" Size="Size.Small" Class="consent-section-icon" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Info">Where it goes:</MudText>
                     </div>
                     <MudList T="string" Dense="true">
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Repo names, branch names, or file paths</MudListItem>
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Code content or task descriptions</MudListItem>
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Agent output or any personal data</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small"><strong>Nowhere by default.</strong> Nothing leaves this machine unless an endpoint is configured</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">If one is configured, data goes only to that destination — you choose it</MudListItem>
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Circle" IconSize="Size.Small">Nothing at all is recorded if you decline</MudListItem>
                     </MudList>
                 </MudItem>
             </MudGrid>
 
+            <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="mb-4">
+                Because diagnostics include your task text, paths and agent output, they may
+                contain information about your code. Decline if that is not appropriate for
+                the work you do here.
+            </MudAlert>
+
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4 d-block">
-                You can change this at any time in Settings.
+                You can change this at any time in Settings. Revoking takes effect immediately.
             </MudText>
 
             <MudDivider Class="mb-4" />

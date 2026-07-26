@@ -9,8 +9,12 @@ public partial class TelemetryConsentModal : ComponentBase
     /// <summary>
     /// The current policy version constant. Bump this string when the privacy policy
     /// materially changes so users who previously responded are re-prompted.
+    ///
+    /// 2.0 — diagnostics changed from anonymous counters to full detail (task text, repo
+    /// path, branch, agent output, stack traces). Anyone who consented under 1.0 agreed to
+    /// something materially narrower, so they must be asked again.
     /// </summary>
-    public const string TelemetryPolicyVersion = "1.0";
+    public const string TelemetryPolicyVersion = "2.0";
 
     [Inject] private IUserPreferencesService Prefs { get; set; } = default!;
 

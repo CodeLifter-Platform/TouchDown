@@ -1,12 +1,13 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using TD.Models;
+using TD.Services.Telemetry;
 
 namespace TD.Services;
 
 public interface IPlanParserService
 {
-    Task<QuarterbackPlan> ParsePlanFromHuddleAsync(
+    Task<PlanResult> ParsePlanFromHuddleAsync(
         string huddleOutput,
         AgentTeam team,
         string taskDescription,
@@ -17,6 +18,18 @@ public interface IPlanParserService
         CancellationToken ct = default);
 
     List<Play> ConvertPlanToPlays(QuarterbackPlan plan, AgentTeam team);
+}
+
+/// <summary>
+/// A parsed plan plus how it was obtained.
+///
+/// The three paths differ enormously in quality — a fallback plan ignores the huddle
+/// conversation entirely — but the drive runs identically either way, so without carrying
+/// the source out of here a collapse in plan quality is invisible.
+/// </summary>
+public record PlanResult(QuarterbackPlan Plan, PlanSource Source)
+{
+    public static implicit operator QuarterbackPlan(PlanResult result) => result.Plan;
 }
 
 public partial class PlanParserService : IPlanParserService
@@ -40,7 +53,7 @@ public partial class PlanParserService : IPlanParserService
     /// If the huddle output already contains valid JSON, uses it directly.
     /// Otherwise, calls the QB again with a structured output prompt.
     /// </summary>
-    public async Task<QuarterbackPlan> ParsePlanFromHuddleAsync(
+    public async Task<PlanResult> ParsePlanFromHuddleAsync(
         string huddleOutput,
         AgentTeam team,
         string taskDescription,
@@ -55,7 +68,7 @@ public partial class PlanParserService : IPlanParserService
         if (plan != null && plan.Assignments.Count > 0)
         {
             _logger.LogInformation("Extracted structured plan from huddle output ({Count} assignments)", plan.Assignments.Count);
-            return plan;
+            return new PlanResult(plan, PlanSource.HuddleJson);
         }
 
         // Otherwise, ask the QB to produce a structured plan
@@ -122,12 +135,12 @@ public partial class PlanParserService : IPlanParserService
         if (plan != null && plan.Assignments.Count > 0)
         {
             _logger.LogInformation("QB produced structured plan ({Count} assignments)", plan.Assignments.Count);
-            return plan;
+            return new PlanResult(plan, PlanSource.Reprompt);
         }
 
         // Fallback: create a basic plan from the task description
         _logger.LogWarning("Failed to extract structured plan, falling back to basic splitting");
-        return CreateFallbackPlan(taskDescription, team);
+        return new PlanResult(CreateFallbackPlan(taskDescription, team), PlanSource.Fallback);
     }
 
     public List<Play> ConvertPlanToPlays(QuarterbackPlan plan, AgentTeam team)

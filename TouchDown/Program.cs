@@ -88,8 +88,9 @@ builder.Services.AddScoped<TD.Areas.Drives.Monitor.DrivesMonitorPageVM>();
 // User preferences (singleton — shared in-memory state across all components)
 builder.Services.AddSingleton<IUserPreferencesService, UserPreferencesService>();
 
-// Telemetry (scoped per-circuit; NullTelemetryService sends nothing — swap class when backend chosen)
-builder.Services.AddScoped<ITelemetryService, NullTelemetryService>();
+// Telemetry — OpenTelemetry spans, exported only when an OTLP endpoint is configured
+// AND the user has consented. See AddTouchDownTelemetry for the gating.
+builder.Services.AddTouchDownTelemetry(builder.Configuration);
 
 // Application services
 builder.Services.AddSingleton<IClaudeStreamingService, ClaudeStreamingService>(); // kept for ClaudeCodeProvider
