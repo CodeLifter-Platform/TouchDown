@@ -1,0 +1,106 @@
+@using TD.Services
+@inject IAgentProviderRegistry Registry
+@inject IClaudeHealthCheck ClaudeHealth
+@inject ICodexHealthCheck CodexHealth
+
+@*
+    Status of the agent CLIs. The dashboard banner only ever reported Claude, so a Codex
+    problem was invisible outside the /health endpoint and the startup log.
+*@
+<MudPaper Class="pa-4" Elevation="1">
+    <div class="d-flex align-center justify-space-between mb-2">
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Terminal" Class="mr-2" />
+            Agent CLIs
+        </MudText>
+        <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="RefreshAsync" Disabled="@_checking">
+            @(_checking ? "Checking…" : "Re-check")
+        </MudButton>
+    </div>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        TouchDown runs drives through these command-line tools. A provider is only offered in
+        the New Drive wizard when it is installed and authenticated.
+    </MudText>
+
+    @if (_checking && _claude is null && _codex is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudList T="string" Dense="true">
+            @RenderStatus("Claude Code", _claude?.IsInstalled ?? false, _claude?.IsAuthenticated ?? false,
+                          _claude?.Version, _claude?.CliPath, _claude?.Error,
+                          "https://docs.anthropic.com/en/docs/claude-code", "claude auth")
+            @RenderStatus("OpenAI Codex", _codex?.IsInstalled ?? false, _codex?.IsAuthenticated ?? false,
+                          _codex?.Version, _codex?.CliPath, _codex?.Error,
+                          "https://www.npmjs.com/package/@@openai/codex", "codex login")
+        </MudList>
+    }
+</MudPaper>
+
+@code {
+    private ClaudeHealthStatus? _claude;
+    private CodexHealthStatus? _codex;
+    private bool _checking;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _checking = true;
+        try
+        {
+            // Both checks are cached for a short window, so re-checking is cheap.
+            _claude = await ClaudeHealth.CheckAsync();
+            _codex = await CodexHealth.CheckAsync();
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private RenderFragment RenderStatus(
+        string name, bool installed, bool authenticated,
+        string? version, string? path, string? error,
+        string installUrl, string authCommand) => __builder =>
+    {
+        var healthy = installed && authenticated;
+
+        <MudListItem T="string" Icon="@(healthy ? Icons.Material.Filled.CheckCircle
+                                              : installed ? Icons.Material.Filled.Warning
+                                                          : Icons.Material.Filled.ErrorOutline)"
+                     IconColor="@(healthy ? Color.Success : installed ? Color.Warning : Color.Error)">
+            <div>
+                <MudText Typo="Typo.body2" Style="font-weight: 600;">@name</MudText>
+                @if (healthy)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        v@(version) at <code>@path</code>
+                    </MudText>
+                }
+                else if (installed)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Installed but not authenticated — run <code>@authCommand</code>.
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Not found on PATH.
+                        <MudLink Href="@installUrl" Target="_blank" Typo="Typo.caption">Installation guide</MudLink>
+                    </MudText>
+                }
+
+                @if (!healthy && !string.IsNullOrWhiteSpace(error))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">@error</MudText>
+                }
+            </div>
+        </MudListItem>
+    };
+}

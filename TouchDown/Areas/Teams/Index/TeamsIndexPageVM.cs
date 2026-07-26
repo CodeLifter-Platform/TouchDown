@@ -19,6 +19,16 @@ public interface ITeamsIndexPageVM
     Task SaveEdit(AgentMember member);
     Task SaveMemberEffort(AgentMember member, AgentEffort effort);
     Task SaveMemberModel(AgentMember member, ClaudeModel model);
+    Task SaveMemberMaxInstances(AgentMember member, int maxInstances);
+
+    Task CreateTeam(string name, string? description);
+    Task RenameTeam(AgentTeam team, string name, string? description);
+    Task DeleteTeam(AgentTeam team);
+    Task SetDefaultTeam(AgentTeam team);
+
+    Task AddMember(AgentTeam team, AgentMember member);
+    Task RemoveMember(AgentTeam team, AgentMember member);
+    Task RenameMember(AgentMember member, string name);
 }
 
 public class TeamsIndexPageVMException : Exception
@@ -139,6 +149,149 @@ public partial class TeamsIndexPageVM : VM, ITeamsIndexPageVM
         {
             _log.Error(ex, "Failed to save model for member {MemberId}", member.Id);
             _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async Task SaveMemberMaxInstances(AgentMember member, int maxInstances)
+    {
+        if (member.MaxInstances == maxInstances) return;
+        try
+        {
+            await _service.UpdateMemberMaxInstancesAsync(member.Id, maxInstances);
+            member.MaxInstances = maxInstances;
+            _snackbar.Add(
+                maxInstances > 1
+                    ? $"{member.Name} can now fan out into up to {maxInstances} instances."
+                    : $"{member.Name} now runs as a single instance.",
+                Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to save fan-out for member {MemberId}", member.Id);
+            _snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ── Teams ────────────────────────────────────────────────────────────────
+
+    public async Task CreateTeam(string name, string? description)
+    {
+        IsSaving = true;
+        try
+        {
+            var team = await _service.CreateTeamAsync(name, description);
+            // Reload so the new team arrives with its (empty) navigation collections.
+            Teams = await _service.GetAllTeamsAsync();
+            _snackbar.Add($"Created {team.Name}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to create team {TeamName}", name);
+            _snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    public async Task RenameTeam(AgentTeam team, string name, string? description)
+    {
+        try
+        {
+            await _service.RenameTeamAsync(team.Id, name, description);
+            team.Name = name.Trim();
+            team.Description = description?.Trim();
+            NotifyStateChanged();
+            _snackbar.Add("Team updated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to rename team {TeamId}", team.Id);
+            _snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    public async Task DeleteTeam(AgentTeam team)
+    {
+        try
+        {
+            await _service.DeleteTeamAsync(team.Id);
+            Teams = Teams.Where(t => t.Id != team.Id).ToList();
+            _snackbar.Add($"Deleted {team.Name}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            // Refusals here are expected (team in use by drives, or is the default) and the
+            // message explains what to do, so show it rather than a generic failure.
+            _log.Warning(ex, "Could not delete team {TeamId}", team.Id);
+            _snackbar.Add(ex.Message, Severity.Warning);
+        }
+    }
+
+    public async Task SetDefaultTeam(AgentTeam team)
+    {
+        try
+        {
+            await _service.SetDefaultTeamAsync(team.Id);
+            foreach (var t in Teams) t.IsDefault = t.Id == team.Id;
+            NotifyStateChanged();
+            _snackbar.Add($"{team.Name} is now the default team.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to set default team {TeamId}", team.Id);
+            _snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    // ── Members ──────────────────────────────────────────────────────────────
+
+    public async Task AddMember(AgentTeam team, AgentMember member)
+    {
+        try
+        {
+            var saved = await _service.AddMemberAsync(team.Id, member);
+            team.Members.Add(saved);
+            NotifyStateChanged();
+            _snackbar.Add($"Added {saved.Name} to {team.Name}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to add member to team {TeamId}", team.Id);
+            _snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    public async Task RemoveMember(AgentTeam team, AgentMember member)
+    {
+        try
+        {
+            await _service.RemoveMemberAsync(member.Id);
+            team.Members.Remove(member);
+            NotifyStateChanged();
+            _snackbar.Add($"Removed {member.Name}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            // "A team needs a leader" is a guard, not a bug — surface it as guidance.
+            _log.Warning(ex, "Could not remove member {MemberId}", member.Id);
+            _snackbar.Add(ex.Message, Severity.Warning);
+        }
+    }
+
+    public async Task RenameMember(AgentMember member, string name)
+    {
+        try
+        {
+            await _service.RenameMemberAsync(member.Id, name);
+            member.Name = name.Trim();
+            NotifyStateChanged();
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Failed to rename member {MemberId}", member.Id);
+            _snackbar.Add(ex.Message, Severity.Error);
         }
     }
 

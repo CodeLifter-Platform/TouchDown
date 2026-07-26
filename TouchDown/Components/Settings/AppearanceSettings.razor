@@ -1,0 +1,55 @@
+@using TD.Services
+@using TD.Themes
+@inject IUserPreferencesService Prefs
+
+@*
+    Theme and dark-mode selection. The app bar has the same controls, but they were
+    component-local state that reset on every reload; both now read and write the same
+    persisted preference.
+*@
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.h6" GutterBottom="true">
+        <MudIcon Icon="@Icons.Material.Filled.Palette" Class="mr-2" />
+        Appearance
+    </MudText>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Your theme and dark-mode choice are saved and restored the next time you open TouchDown.
+    </MudText>
+
+    <MudSelect T="string" Value="@SelectedTheme" ValueChanged="OnThemeChanged" Label="Theme"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 320px;" Class="mb-4">
+        @foreach (var entry in ThemeRegistry.All)
+        {
+            <MudSelectItem T="string" Value="@entry.Key">@entry.Key</MudSelectItem>
+        }
+    </MudSelect>
+
+    <MudSwitch T="bool" Value="@Prefs.Current.DarkMode" ValueChanged="OnDarkModeChanged"
+               Color="Color.Primary" Label="Dark mode" />
+
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3 d-block">
+        Changes apply after the page reloads.
+    </MudText>
+</MudPaper>
+
+@code {
+    private string SelectedTheme =>
+        !string.IsNullOrWhiteSpace(Prefs.Current.ThemeName) && ThemeRegistry.All.ContainsKey(Prefs.Current.ThemeName!)
+            ? Prefs.Current.ThemeName!
+            : "TouchDown";
+
+    private async Task OnThemeChanged(string name)
+    {
+        Prefs.Current.ThemeName = name;
+        await Prefs.SaveAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnDarkModeChanged(bool value)
+    {
+        Prefs.Current.DarkMode = value;
+        await Prefs.SaveAsync();
+        StateHasChanged();
+    }
+}

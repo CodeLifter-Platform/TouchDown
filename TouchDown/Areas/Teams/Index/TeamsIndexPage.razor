@@ -6,10 +6,34 @@
 <PageTitle>TD - Teams</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium">
-    <MudText Typo="Typo.h5" Class="mb-1">Agent Teams</MudText>
+    <div class="d-flex justify-space-between align-center mb-1">
+        <MudText Typo="Typo.h5">Agent Teams</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.GroupAdd" OnClick="OpenCreateTeam">
+            New Team
+        </MudButton>
+    </div>
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
         Manage your agent rosters. Each team has a leader, workers, and specialized roles.
     </MudText>
+
+    @if (_creatingTeam)
+    {
+        <MudPaper Outlined="true" Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle2" Class="mb-3">New team</MudText>
+            <MudTextField @bind-Value="_newTeamName" Label="Team name" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" MaxLength="100" Class="mb-3" />
+            <MudTextField @bind-Value="_newTeamDescription" Label="Description" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Lines="2" MaxLength="500" Class="mb-3" />
+            <div class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Text" OnClick="() => _creatingTeam = false" Disabled="@VM.IsSaving">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateTeam"
+                           Disabled="@(VM.IsSaving || string.IsNullOrWhiteSpace(_newTeamName))">
+                    Create
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
 
     <MudStack Spacing="4">
         @foreach (var team in VM.Teams)
@@ -23,6 +47,18 @@
                             {
                                 <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Default</MudChip>
                             }
+                            <MudSpacer />
+                            @if (!team.IsDefault)
+                            {
+                                <MudTooltip Text="Make this the default team">
+                                    <MudIconButton Icon="@Icons.Material.Filled.StarBorder" Size="Size.Small"
+                                                   OnClick="@(() => VM.SetDefaultTeam(team))" />
+                                </MudTooltip>
+                                <MudTooltip Text="Delete this team">
+                                    <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small"
+                                                   Color="Color.Error" OnClick="@(() => ConfirmDeleteTeam(team))" />
+                                </MudTooltip>
+                            }
                         </div>
                     </TitleContent>
                     <ChildContent>
@@ -35,7 +71,9 @@
                                     <th>Role</th>
                                     <th>Model</th>
                                     <th>Effort</th>
+                                    <th>Fan-out</th>
                                     <th>System Prompt</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -50,15 +88,6 @@
                                                 }
                                                 @member.Name
                                             </div>
-                                            @if (member.MaxInstances > 1)
-                                            {
-                                                <MudTooltip Text="The Quarterback can fan this agent out into multiple parallel instances.">
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text"
-                                                             Icon="@Icons.Material.Filled.Groups" Class="ma-0">
-                                                        fan-out · up to @member.MaxInstances
-                                                    </MudChip>
-                                                </MudTooltip>
-                                            }
                                         </td>
                                         <td>
                                             <MudChip T="string" Size="Size.Small" Color="@TeamsIndexPageVM.GetRoleColor(member.Role)" Variant="Variant.Outlined">
@@ -84,6 +113,14 @@
                                                     <MudSelectItem T="AgentEffort" Value="@eff">@eff.ToDisplayName()</MudSelectItem>
                                                 }
                                             </MudSelect>
+                                        </td>
+                                        <td>
+                                            <MudTooltip Text="Maximum parallel instances the Quarterback may fan this agent into.">
+                                                <MudNumericField T="int" Value="member.MaxInstances" Min="1" Max="8"
+                                                                 Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                                                 Style="min-width: 90px;"
+                                                                 ValueChanged="@(n => VM.SaveMemberMaxInstances(member, n))" />
+                                            </MudTooltip>
                                         </td>
                                         <td style="min-width: 340px;">
                                             @if (VM.EditingMemberId == member.Id)
@@ -115,10 +152,73 @@
                                                 </div>
                                             }
                                         </td>
+                                        <td style="width: 48px;">
+                                            <MudTooltip Text="Remove this agent">
+                                                <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Size="Size.Small"
+                                                               Color="Color.Error"
+                                                               OnClick="@(() => VM.RemoveMember(team, member))" />
+                                            </MudTooltip>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </MudSimpleTable>
+
+                        @* ── Add member ── *@
+                        @if (_addingMemberToTeamId == team.Id)
+                        {
+                            <MudPaper Outlined="true" Class="pa-3 mb-3">
+                                <MudText Typo="Typo.subtitle2" Class="mb-3">Add an agent</MudText>
+                                <div class="d-flex gap-2 flex-wrap mb-3">
+                                    <MudTextField @bind-Value="_newMemberName" Label="Name" Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" Immediate="true" MaxLength="100"
+                                                  Style="min-width: 200px;" />
+                                    <MudSelect T="AgentRole" @bind-Value="_newMemberRole" Label="Role"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;">
+                                        @foreach (var role in Enum.GetValues<AgentRole>())
+                                        {
+                                            <MudSelectItem T="AgentRole" Value="@role">@role</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                    <MudSelect T="ClaudeModel" @bind-Value="_newMemberModel" Label="Model"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 170px;">
+                                        @foreach (var m in Enum.GetValues<ClaudeModel>())
+                                        {
+                                            <MudSelectItem T="ClaudeModel" Value="@m">@m.ToDisplayName()</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                    <MudSelect T="AgentEffort" @bind-Value="_newMemberEffort" Label="Effort"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 140px;">
+                                        @foreach (var e in Enum.GetValues<AgentEffort>())
+                                        {
+                                            <MudSelectItem T="AgentEffort" Value="@e">@e.ToDisplayName()</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                    <MudNumericField T="int" @bind-Value="_newMemberMaxInstances" Label="Fan-out"
+                                                     Min="1" Max="8" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Style="min-width: 110px;" />
+                                </div>
+                                <MudTextField @bind-Value="_newMemberPrompt" Label="System prompt"
+                                              Variant="Variant.Outlined" Lines="4" MaxLength="4000" Class="mb-3"
+                                              HelperText="What this agent is and what it is responsible for." />
+                                <div class="d-flex justify-end gap-2">
+                                    <MudButton Variant="Variant.Text" OnClick="() => _addingMemberToTeamId = null">Cancel</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                               Disabled="@string.IsNullOrWhiteSpace(_newMemberName)"
+                                               OnClick="@(() => AddMember(team))">
+                                        Add
+                                    </MudButton>
+                                </div>
+                            </MudPaper>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mb-3"
+                                       StartIcon="@Icons.Material.Filled.PersonAdd"
+                                       OnClick="@(() => BeginAddMember(team))">
+                                Add agent
+                            </MudButton>
+                        }
 
                         @if (team.CommunicationRules.Any())
                         {
@@ -135,3 +235,69 @@
         }
     </MudStack>
 </MudContainer>
+
+@code {
+    [Inject] private IDialogService DialogService { get; set; } = null!;
+
+    private bool _creatingTeam;
+    private string _newTeamName = "";
+    private string _newTeamDescription = "";
+
+    private int? _addingMemberToTeamId;
+    private string _newMemberName = "";
+    private AgentRole _newMemberRole = AgentRole.Worker;
+    private ClaudeModel _newMemberModel = ClaudeModel.Sonnet;
+    private AgentEffort _newMemberEffort = AgentEffort.High;
+    private int _newMemberMaxInstances = 1;
+    private string _newMemberPrompt = "";
+
+    private void OpenCreateTeam()
+    {
+        _newTeamName = "";
+        _newTeamDescription = "";
+        _creatingTeam = true;
+    }
+
+    private async Task CreateTeam()
+    {
+        await VM.CreateTeam(_newTeamName, _newTeamDescription);
+        _creatingTeam = false;
+    }
+
+    private async Task ConfirmDeleteTeam(AgentTeam team)
+    {
+        // Deleting a roster is not recoverable from the UI, so confirm first.
+        var result = await DialogService.ShowMessageBoxAsync(
+            $"Delete {team.Name}?",
+            "This removes the team and its agents. Drives that already used it keep their history.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true) await VM.DeleteTeam(team);
+    }
+
+    private void BeginAddMember(AgentTeam team)
+    {
+        _addingMemberToTeamId = team.Id;
+        _newMemberName = "";
+        _newMemberRole = AgentRole.Worker;
+        _newMemberModel = ClaudeModel.Sonnet;
+        _newMemberEffort = AgentEffort.High;
+        _newMemberMaxInstances = 1;
+        _newMemberPrompt = "";
+    }
+
+    private async Task AddMember(AgentTeam team)
+    {
+        await VM.AddMember(team, new AgentMember
+        {
+            Name = _newMemberName,
+            Role = _newMemberRole,
+            Model = _newMemberModel,
+            Effort = _newMemberEffort,
+            MaxInstances = _newMemberMaxInstances,
+            SystemPrompt = string.IsNullOrWhiteSpace(_newMemberPrompt) ? null : _newMemberPrompt.Trim(),
+        });
+
+        _addingMemberToTeamId = null;
+    }
+}
