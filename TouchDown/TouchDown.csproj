@@ -22,11 +22,16 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
     <PackageReference Include="MudBlazor" Version="9.2.0" />
     <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Data\Data.csproj" />
     <ProjectReference Include="..\Themes\Themes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TouchDown.Tests" />
   </ItemGroup>
 
 </Project>

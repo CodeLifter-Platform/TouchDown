@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Serilog;
 using TD.Models;
 using TD.MVVM.ViewModels;
+using TD.Services;
 
 namespace TD.Areas.Drives.New;
 
@@ -69,6 +70,21 @@ public partial class HuddleVM : VM, IHuddleVM
     /// <summary>Display name of the team's researcher (e.g. "The Scout"), for labels.</summary>
     public string ResearcherName => Researcher?.Name ?? "Scout";
 
+    /// <summary>
+    /// The model a huddle participant should run on, honoring the drive's provider.
+    /// Member models are Claude ids, so on a non-Claude provider the drive's model wins.
+    /// </summary>
+    private string ResolveModel(AgentMember member, bool preferDriveModel) =>
+        ProviderCapabilities.ResolveModel(
+            Session?.ProviderId,
+            member.Model.ToModelId(),
+            Session?.ModelId,
+            preferDriveModel);
+
+    /// <summary>The provider-appropriate effort flag, or null when the combination rejects one.</summary>
+    private string? ResolveEffort(string modelId, AgentEffort effort) =>
+        ProviderCapabilities.ResolveEffort(Session?.ProviderId, modelId, effort);
+
     public async Task InitializeWithSession(AgentSession session)
     {
         _log.Debug("Initializing huddle with session");
@@ -131,13 +147,11 @@ public partial class HuddleVM : VM, IHuddleVM
             var prompt = conversation +
                 $"\n\n[{researcher.Name}]\nResearch the Head Coach's latest request on the web and report concise, sourced findings the team can act on.\n";
 
-            var model = researcher.Model.ToModelId();
-            var effort = model.Contains("haiku", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : researcher.Effort.ToCliValue();
+            var model = ResolveModel(researcher, preferDriveModel: false);
+            var effort = ResolveEffort(model, researcher.Effort);
 
             await foreach (var chunk in _service.StreamCoordinatorResearchAsync(
-                model, systemPrompt, prompt, Session?.RepoPath, effort, _cts.Token))
+                Session?.ProviderId, model, systemPrompt, prompt, Session?.RepoPath, effort, _cts.Token))
             {
                 StreamingContent += chunk;
             }
@@ -215,15 +229,13 @@ public partial class HuddleVM : VM, IHuddleVM
                     "Roll call from the Head Coach. Reply in 1–2 short lines only: your name, your position/role " +
                     "on this team, and your current readiness status. Stay in character as your role; do not mention " +
                     "or invent any agents outside the roster above.";
-                var model = member.Model.ToModelId();
-                var effort = model.Contains("haiku", StringComparison.OrdinalIgnoreCase)
-                    ? null
-                    : member.Effort.ToCliValue();
+                var model = ResolveModel(member, preferDriveModel: false);
+                var effort = ResolveEffort(model, member.Effort);
 
                 try
                 {
                     await foreach (var chunk in _service.StreamQbResponseAsync(
-                        model, systemPrompt, prompt, Session?.RepoPath, effort, _cts.Token))
+                        Session?.ProviderId, model, systemPrompt, prompt, Session?.RepoPath, effort, _cts.Token))
                     {
                         StreamingContent += chunk;
                     }
@@ -296,17 +308,13 @@ public partial class HuddleVM : VM, IHuddleVM
             var conversationParts = Messages.Select(msg => $"[{Speaker(msg)}]\n{msg.Content}");
             var prompt = string.Join("\n\n", conversationParts) + "\n\n[Quarterback]\n";
 
-            // The huddle QB runs on Claude. Honor the drive's primary model when the provider is Claude;
-            // a Codex drive still plans the huddle with the team's Claude leader model.
-            var qbModel = Session?.ProviderId == "claude-code" && !string.IsNullOrEmpty(Session?.ModelId)
-                ? Session!.ModelId!
-                : leader.Model.ToModelId();
-            // The --effort flag isn't supported on Haiku.
-            var effort = qbModel.Contains("haiku", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : (Session?.Effort ?? AgentEffort.High).ToCliValue();
+            // The huddle runs on the drive's selected provider, so a Codex drive plans on Codex.
+            // The QB is the one agent whose model the drive-level selection overrides.
+            var qbModel = ResolveModel(leader, preferDriveModel: true);
+            var effort = ResolveEffort(qbModel, Session?.Effort ?? AgentEffort.High);
 
             await foreach (var chunk in _service.StreamQbResponseAsync(
+                Session?.ProviderId,
                 qbModel,
                 systemPrompt,
                 prompt, Session?.RepoPath, effort, _cts.Token))

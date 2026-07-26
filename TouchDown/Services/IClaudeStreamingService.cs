@@ -29,6 +29,12 @@ public record ClaudeStreamChunk
     public bool IsError { get; init; }
     public string? Result { get; init; }
     public double? CostUsd { get; init; }
+
+    /// <summary>Wall-clock duration reported by the CLI's result event.</summary>
+    public long? DurationMs { get; init; }
+
+    /// <summary>Turn count reported by the CLI's result event.</summary>
+    public int? NumTurns { get; init; }
 }
 
 public interface IClaudeStreamingService

@@ -1,8 +1,7 @@
 name: Tests
 
-# PR gate: build the solution on a linux runner. No publishing, no releases —
+# PR gate: build and test the solution on a linux runner. No publishing, no releases —
 # those live in build.yml behind workflow_dispatch.
-# No test project exists yet — swap `dotnet build` for `dotnet test` when one lands.
 
 on:
   pull_request:
@@ -21,4 +20,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      # The git-backed tests shell out to `git commit`, which needs an identity.
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@touchdown.local"
+          git config --global user.name "TouchDown CI"
+
       - run: dotnet build TouchDown.sln -c Release
+      - run: dotnet test TouchDown.sln -c Release --no-build --verbosity normal

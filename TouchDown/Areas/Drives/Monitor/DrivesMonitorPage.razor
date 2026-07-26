@@ -218,9 +218,81 @@
             InvokeAsync(StateHasChanged);
         });
 
+        hubConnection.On<JsonElement>("DrivePhaseChanged", (update) =>
+        {
+            if (update.TryGetProperty("Phase", out var p) && p.GetString() is { } phase)
+                VM.SetPhase(phase);
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<JsonElement>("PlaysReady", (update) =>
+        {
+            if (!update.TryGetProperty("Plays", out var plays) || plays.ValueKind != JsonValueKind.Array)
+                return;
+
+            VM.SetPlays(plays.EnumerateArray().Select(p => new PlaySummaryVM
+            {
+                Id = ReadInt(p, "Id"),
+                AgentName = ReadString(p, "AgentName") ?? "Unknown",
+                Description = ReadString(p, "Description") ?? "",
+                Status = ParsePlayStatus(ReadString(p, "Status")),
+                OrderIndex = ReadInt(p, "OrderIndex")
+            }).ToList());
+
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<JsonElement>("PlayStatusUpdate", (update) =>
+        {
+            VM.UpdatePlayStatus(
+                ReadInt(update, "PlayId"),
+                ReadString(update, "Status") ?? nameof(PlayStatus.Pending),
+                ReadDateTime(update, "StartedAt"),
+                ReadDateTime(update, "CompletedAt"));
+            InvokeAsync(StateHasChanged);
+        });
+
         await hubConnection.StartAsync();
         await hubConnection.InvokeAsync("JoinDrive", DriveId);
     }
+
+    @* ── SignalR payload readers ──
+       The hub sends anonymous objects with PascalCase names; the lookups fall back to a
+       case-insensitive scan so a serializer-casing change can't silently blank the board. *@
+    private static bool TryGet(JsonElement el, string name, out JsonElement value)
+    {
+        if (el.ValueKind != JsonValueKind.Object)
+        {
+            value = default;
+            return false;
+        }
+
+        if (el.TryGetProperty(name, out value)) return true;
+
+        foreach (var prop in el.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = prop.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string? ReadString(JsonElement el, string name) =>
+        TryGet(el, name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static int ReadInt(JsonElement el, string name) =>
+        TryGet(el, name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
+
+    private static DateTime? ReadDateTime(JsonElement el, string name) =>
+        TryGet(el, name, out var v) && v.ValueKind == JsonValueKind.String && v.TryGetDateTime(out var d) ? d : null;
+
+    private static PlayStatus ParsePlayStatus(string? status) =>
+        Enum.TryParse<PlayStatus>(status, ignoreCase: true, out var s) ? s : PlayStatus.Pending;
 
     private async Task OpenTranscript(string agentName)
     {
@@ -236,7 +308,19 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (hubConnection != null) await hubConnection.DisposeAsync();
+        if (hubConnection != null)
+        {
+            // Leave the group before tearing the connection down so the hub stops
+            // fanning this drive's traffic at a circuit that's going away.
+            if (hubConnection.State == HubConnectionState.Connected)
+            {
+                try { await hubConnection.InvokeAsync("LeaveDrive", DriveId); }
+                catch (Exception) { /* the connection is closing anyway */ }
+            }
+
+            await hubConnection.DisposeAsync();
+        }
+
         await VM.DisposeAsync();
     }
 }

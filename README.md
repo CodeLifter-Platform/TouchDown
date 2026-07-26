@@ -12,6 +12,29 @@ dotnet run --project TouchDown
 docker compose up --build
 ```
 
+The SQLite database location comes from `ConnectionStrings:TouchDown` (default
+`touchdown.db` beside the app). The container image sets it to `/app/data/touchdown.db`
+so the data lives on the mounted volume.
+
+## Tests
+
+```sh
+dotnet test TouchDown.sln
+```
+
+`Tests/TouchDown.Tests` covers the orchestration scheduler, plan parsing, provider/effort
+resolution, the git wrapper (against real repositories in temp directories), the data
+access layer and migrations (against real SQLite), and application startup.
+
+Startup is covered twice on purpose. `StartupTests` boots the app in-process via
+`WebApplicationFactory`, which is enough for DI wiring and migrations. `ProcessStartupTests`
+launches the built binary as its own process in both `Development` and `Production`,
+because some startup faults involve process-wide static state that an in-process host
+cannot reproduce once another test has initialized it.
+
+The git-backed tests shell out to `git commit`, so a `user.email` / `user.name` must be
+configured (CI sets one).
+
 ## Releasing
 
 There are no manual tags — releases are produced by tooling, two ways:

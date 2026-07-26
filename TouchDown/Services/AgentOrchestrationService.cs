@@ -450,7 +450,12 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     // Helpers
     // ──────────────────────────────────────────────────────────────
 
-    private static List<List<int>> BuildExecutionWaves(int playCount, Dictionary<int, List<int>> deps)
+    /// <summary>
+    /// Groups play indices into dependency waves: wave 0 has no unmet dependencies, wave 1
+    /// depends only on wave 0, and so on. A dependency cycle can't be ordered, so the
+    /// remaining plays are emitted as one final wave rather than deadlocking.
+    /// </summary>
+    internal static List<List<int>> BuildExecutionWaves(int playCount, Dictionary<int, List<int>> deps)
     {
         var waves = new List<List<int>>();
         var completed = new HashSet<int>();
@@ -479,7 +484,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         return waves;
     }
 
-    private static List<string> GetToolsForRole(AgentRole role) => role switch
+    internal static List<string> GetToolsForRole(AgentRole role) => role switch
     {
         AgentRole.Leader => ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
         AgentRole.Worker => ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
@@ -653,15 +658,8 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     }
 
     /// <summary>Maps an effort level to the provider-specific CLI value for a given model.</summary>
-    private static string? ResolveEffort(IAgentProvider provider, string modelId, AgentEffort effort)
-    {
-        if (provider.ProviderId == "codex")
-            return effort.ToCodexReasoningEffort();
-        // Claude: the --effort flag is not supported on Haiku.
-        if (modelId.Contains("haiku", StringComparison.OrdinalIgnoreCase))
-            return null;
-        return effort.ToCliValue();
-    }
+    private static string? ResolveEffort(IAgentProvider provider, string modelId, AgentEffort effort) =>
+        ProviderCapabilities.ResolveEffort(provider.ProviderId, modelId, effort);
 
     private static string TruncateForLog(string text) =>
         text.Length > 150 ? text[..147] + "..." : text;

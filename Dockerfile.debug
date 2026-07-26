@@ -16,6 +16,9 @@ WORKDIR "/src/TouchDown"
 RUN dotnet build -c Debug -o /app
 
 WORKDIR /app
+RUN mkdir -p /app/data
 ENV ASPNETCORE_ENVIRONMENT=Development
 ENV DOTNET_USE_POLLING_FILE_WATCHER=true
+ENV ConnectionStrings__TouchDown="Data Source=/app/data/touchdown.db"
+VOLUME ["/app/data"]
 ENTRYPOINT ["dotnet", "TD.dll"]
