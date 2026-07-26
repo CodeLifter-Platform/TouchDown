@@ -24,21 +24,58 @@ public interface IClaudeHealthCheck
 
 public class ClaudeHealthCheck : IClaudeHealthCheck, IHealthCheck
 {
-    private readonly ILogger<ClaudeHealthCheck> _logger;
-    private ClaudeHealthStatus? _lastStatus;
+    /// <summary>
+    /// How long a check result stays fresh. Provider availability is probed on every
+    /// New Drive page load, so without this the CLI gets shelled out to repeatedly.
+    /// </summary>
+    public static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(60);
 
-    public ClaudeHealthCheck(ILogger<ClaudeHealthCheck> logger)
+    private readonly ILogger<ClaudeHealthCheck> _logger;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly TimeProvider _time;
+    private ClaudeHealthStatus? _lastStatus;
+    private DateTimeOffset _lastCheckedAt;
+
+    public ClaudeHealthCheck(ILogger<ClaudeHealthCheck> logger, TimeProvider? timeProvider = null)
     {
         _logger = logger;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     public ClaudeHealthStatus? LastStatus => _lastStatus;
 
     public async Task<ClaudeHealthStatus> CheckAsync(CancellationToken ct = default)
     {
-        var status = await RunCheckAsync(ct);
-        _lastStatus = status;
-        return status;
+        if (TryGetFresh(out var cached)) return cached;
+
+        await _gate.WaitAsync(ct);
+        try
+        {
+            // Another caller may have refreshed while this one waited for the gate.
+            if (TryGetFresh(out cached)) return cached;
+
+            var status = await RunCheckAsync(ct);
+            _lastStatus = status;
+            _lastCheckedAt = _time.GetUtcNow();
+            return status;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private bool TryGetFresh(out ClaudeHealthStatus status)
+    {
+        var last = _lastStatus;
+        if (last != null && _time.GetUtcNow() - _lastCheckedAt < CacheDuration)
+        {
+            status = last;
+            return true;
+        }
+
+        status = null!;
+        return false;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)

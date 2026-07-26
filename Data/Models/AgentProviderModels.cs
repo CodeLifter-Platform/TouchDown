@@ -42,6 +42,12 @@ public record AgentStreamChunk
     public bool IsError { get; init; }
     public string? Result { get; init; }
     public double? CostUsd { get; init; }
+
+    /// <summary>Wall-clock duration reported on the provider's terminal event, when it reports one.</summary>
+    public long? DurationMs { get; init; }
+
+    /// <summary>Turn count reported on the provider's terminal event, when it reports one.</summary>
+    public int? NumTurns { get; init; }
 }
 
 /// <summary>

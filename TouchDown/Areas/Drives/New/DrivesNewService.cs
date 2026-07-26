@@ -14,8 +14,8 @@ public interface IDrivesNewService
     Task<Drive> StartDriveAsync(AgentSession session);
     Task<Drive> CreateDraftDriveAsync(AgentSession session);
     Task AddTurnAsync(DriveTurn turn);
-    IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
-    IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
+    IAsyncEnumerable<string> StreamQbResponseAsync(string? providerId, string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
+    IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string? providerId, string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default);
 }
 
 public class DrivesNewServiceException : Exception
@@ -106,15 +106,76 @@ public class DrivesNewService : IDrivesNewService
 
     public Task AddTurnAsync(DriveTurn turn) => _da.AddTurnAsync(turn);
 
-    public IAsyncEnumerable<string> StreamQbResponseAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
+    /// <summary>Read-only web + filesystem tools for research runs, allowlisted so a headless run never blocks on a prompt.</summary>
+    private static readonly List<string> ResearchTools = ["WebSearch", "WebFetch", "Read", "Glob", "Grep"];
+
+    public IAsyncEnumerable<string> StreamQbResponseAsync(string? providerId, string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
     {
-        _log.Debug("Streaming QB response with model {ModelId} effort {Effort}", modelId, effort);
-        return _claude.StreamResponseAsync(modelId, systemPrompt, prompt, workingDir, effort, ct);
+        _log.Debug("Streaming QB response via {ProviderId} with model {ModelId} effort {Effort}", providerId, modelId, effort);
+        return StreamViaProviderAsync(providerId, new AgentContext
+        {
+            ModelId = modelId,
+            SystemPrompt = systemPrompt,
+            Prompt = prompt,
+            WorkingDirectory = workingDir,
+            Effort = effort,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools,
+        }, ct);
     }
 
-    public IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
+    public IAsyncEnumerable<string> StreamCoordinatorResearchAsync(string? providerId, string modelId, string systemPrompt, string prompt, string? workingDir, string? effort = null, CancellationToken ct = default)
     {
-        _log.Debug("Streaming Offensive Coordinator research with model {ModelId}", modelId);
-        return _claude.StreamResearchAsync(modelId, systemPrompt, prompt, workingDir, effort, ct);
+        _log.Debug("Streaming research via {ProviderId} with model {ModelId}", providerId, modelId);
+        return StreamViaProviderAsync(providerId, new AgentContext
+        {
+            ModelId = modelId,
+            SystemPrompt = systemPrompt,
+            Prompt = prompt,
+            WorkingDirectory = workingDir,
+            Effort = effort,
+            AllowedTools = ResearchTools,
+            DangerouslySkipPermissions = true,
+            DisallowedTools = AgentDefaults.BlockedSubagentTools,
+        }, ct);
+    }
+
+    /// <summary>
+    /// Streams text through the drive's selected provider. The huddle used to call the
+    /// Claude CLI directly, so a Codex drive still planned on Claude; resolving the
+    /// provider here keeps planning on whichever backend the user picked.
+    /// </summary>
+    private async IAsyncEnumerable<string> StreamViaProviderAsync(
+        string? providerId,
+        AgentContext context,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var provider = ResolveProvider(providerId);
+
+        await foreach (var chunk in provider.StreamAsync(context, ct))
+        {
+            if (chunk.TextDelta != null)
+                yield return chunk.TextDelta;
+            else if (chunk.IsError && !string.IsNullOrWhiteSpace(chunk.Result))
+                // Surface CLI failures instead of swallowing them — otherwise the huddle
+                // shows an empty bubble and the agent looks like it never started.
+                yield return $"\n\n⚠️ {chunk.Result}";
+        }
+    }
+
+    private IAgentProvider ResolveProvider(string? providerId)
+    {
+        if (!string.IsNullOrEmpty(providerId))
+        {
+            try
+            {
+                return _providerRegistry.GetById(providerId);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning(ex, "Unknown provider {ProviderId}; falling back to Claude Code", providerId);
+            }
+        }
+
+        return _providerRegistry.GetById("claude-code");
     }
 }

@@ -60,6 +60,8 @@ public class ClaudeCodeProvider : IAgentProvider
         var fullText = new StringBuilder();
         var toolsUsed = new List<string>();
         double? costUsd = null;
+        long? durationMs = null;
+        int? numTurns = null;
         bool isError = false;
 
         await foreach (var chunk in StreamAsync(context, ct))
@@ -73,6 +75,12 @@ public class ClaudeCodeProvider : IAgentProvider
             if (chunk.CostUsd.HasValue)
                 costUsd = chunk.CostUsd;
 
+            if (chunk.DurationMs.HasValue)
+                durationMs = chunk.DurationMs;
+
+            if (chunk.NumTurns.HasValue)
+                numTurns = chunk.NumTurns;
+
             if (chunk.IsError)
                 isError = true;
 
@@ -85,6 +93,8 @@ public class ClaudeCodeProvider : IAgentProvider
             FullText = fullText.ToString(),
             IsError = isError,
             CostUsd = costUsd,
+            DurationMs = durationMs,
+            NumTurns = numTurns,
             ToolsUsed = toolsUsed
         };
     }
@@ -113,6 +123,8 @@ public class ClaudeCodeProvider : IAgentProvider
         IsError = c.IsError,
         Result = c.Result,
         CostUsd = c.CostUsd,
+        DurationMs = c.DurationMs,
+        NumTurns = c.NumTurns,
     };
 }
 

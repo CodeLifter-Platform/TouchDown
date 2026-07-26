@@ -14,4 +14,12 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+
+# Keep the SQLite file on the mounted volume — the working directory is not persisted,
+# so a default relative path would put the DB inside the container layer and lose it on
+# every recreate.
+RUN mkdir -p /app/data
+ENV ConnectionStrings__TouchDown="Data Source=/app/data/touchdown.db"
+VOLUME ["/app/data"]
+
 ENTRYPOINT ["dotnet", "TD.dll"]

@@ -3,13 +3,27 @@ using Hangfire.MemoryStorage;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor;
 using MudBlazor.Services;
+using Serilog;
 using TD.Application;
 using TD.Data;
 using TD.Hubs;
+using TD.Models;
 using TD.Services;
 using TD.Services.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Serilog ──
+// Services and VMs log through the static `Log.ForContext<T>()` API, so the static
+// logger must be assigned or all of that output goes to a silent no-op sink.
+// UseSerilog() with no argument then routes Microsoft's ILogger<T> through the same
+// pipeline, giving one sink set for both.
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // Blazor
 builder.Services.AddRazorComponents()
@@ -24,9 +38,12 @@ builder.Services.AddMudServices(config =>
 // SignalR
 builder.Services.AddSignalR();
 
-// EF Core with IDbContextFactory pattern
+// EF Core with IDbContextFactory pattern.
+// The connection string comes from configuration so a deployment can point the DB at a
+// mounted volume; the container image sets ConnectionStrings__TouchDown to /app/data.
 builder.Services.AddDbContextFactory<TDDbContext>(options =>
-    options.UseSqlite("Data Source=touchdown.db"));
+    options.UseSqlite(builder.Configuration.GetConnectionString("TouchDown")
+                      ?? "Data Source=touchdown.db"));
 
 // Hangfire
 builder.Services.AddHangfire(config =>
@@ -79,6 +96,7 @@ builder.Services.AddSingleton<ISharedDriveContext, SharedDriveContext>();
 builder.Services.AddSingleton<IPlanParserService, PlanParserService>();
 builder.Services.AddSingleton<IAgentOrchestrationService, AgentOrchestrationService>();
 builder.Services.AddTransient<StaleDriveCleanupJob>();
+builder.Services.AddTransient<OrphanedDriveReconciler>();
 
 var app = builder.Build();
 
@@ -121,6 +139,14 @@ using (var scope = app.Services.CreateScope())
 
     await conn.CloseAsync();
     await db.Database.MigrateAsync();
+}
+
+// Close out drives orphaned by a previous process — execution is in-memory, so anything
+// still InProgress at startup is dead and would otherwise spin until the 30-minute sweep.
+using (var scope = app.Services.CreateScope())
+{
+    var reconciler = scope.ServiceProvider.GetRequiredService<OrphanedDriveReconciler>();
+    await reconciler.ReconcileAsync();
 }
 
 // Run Claude health check on startup
@@ -190,10 +216,25 @@ if (app.Environment.IsDevelopment())
     app.MapHangfireDashboard("/hangfire");
 }
 
-// Stale drive cleanup every 5 minutes
-RecurringJob.AddOrUpdate<StaleDriveCleanupJob>(
-    "stale-drive-cleanup",
-    job => job.ExecuteAsync(),
-    "*/5 * * * *");
+// Stale drive cleanup every 5 minutes.
+// Registered through IRecurringJobManager rather than the static RecurringJob API: the
+// static one reads JobStorage.Current, which is only initialized as a side effect of
+// resolving Hangfire from DI. MapHangfireDashboard did that — but it is Development-only,
+// so in Production the static call threw and the app never started.
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobs = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    recurringJobs.AddOrUpdate<StaleDriveCleanupJob>(
+        "stale-drive-cleanup",
+        job => job.ExecuteAsync(),
+        "*/5 * * * *");
+}
 
 app.Run();
+
+/// <summary>
+/// Exposed so integration tests can boot the real application through
+/// <c>WebApplicationFactory</c>. Top-level statements generate an internal Program class;
+/// this partial makes it public without changing any behaviour.
+/// </summary>
+public partial class Program;

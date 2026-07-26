@@ -46,8 +46,20 @@ public class ClaudeStreamEvent
     [JsonPropertyName("result")]
     public string? Result { get; set; }
 
+    /// <summary>
+    /// The CLI's result event reports the run cost as <c>total_cost_usd</c>. Older builds
+    /// emitted <c>cost_usd</c>; both are mapped so the value survives either shape.
+    /// Read <see cref="ResolvedCostUsd"/> rather than either field directly.
+    /// </summary>
+    [JsonPropertyName("total_cost_usd")]
+    public double? TotalCostUsd { get; set; }
+
     [JsonPropertyName("cost_usd")]
     public double? CostUsd { get; set; }
+
+    /// <summary>The run cost from whichever field the CLI populated.</summary>
+    [JsonIgnore]
+    public double? ResolvedCostUsd => TotalCostUsd ?? CostUsd;
 
     [JsonPropertyName("duration_ms")]
     public long? DurationMs { get; set; }

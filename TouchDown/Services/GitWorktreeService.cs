@@ -50,42 +50,42 @@ public class GitWorktreeService : IGitWorktreeService
         var worktreePath = Path.Combine(repoPath, ".touchdown", "worktrees", safeBranch);
         Directory.CreateDirectory(Path.GetDirectoryName(worktreePath)!);
 
-        await RunGitAsync(repoPath, $"worktree add \"{worktreePath}\" -b {branchName}", ct);
+        await RunGitAsync(repoPath, ct, "worktree", "add", worktreePath, "-b", branchName);
         _logger.LogInformation("Created worktree at {Path} on branch {Branch}", worktreePath, branchName);
         return worktreePath;
     }
 
     public async Task RemoveWorktreeAsync(string worktreePath, CancellationToken ct = default)
     {
-        var parentRepo = await RunGitAsync(worktreePath, "rev-parse --git-common-dir", ct);
+        var parentRepo = await RunGitAsync(worktreePath, ct, "rev-parse", "--git-common-dir");
         var repoPath = Path.GetDirectoryName(parentRepo.Trim())!;
-        await RunGitAsync(repoPath, $"worktree remove \"{worktreePath}\" --force", ct);
+        await RunGitAsync(repoPath, ct, "worktree", "remove", worktreePath, "--force");
         _logger.LogInformation("Removed worktree at {Path}", worktreePath);
     }
 
     public async Task<List<string>> ListBranchesAsync(string repoPath, CancellationToken ct = default)
     {
-        var output = await RunGitAsync(repoPath, "branch --list --format=%(refname:short)", ct);
+        var output = await RunGitAsync(repoPath, ct, "branch", "--list", "--format=%(refname:short)");
         return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
     }
 
     public async Task<string> GetCurrentBranchAsync(string repoPath, CancellationToken ct = default)
     {
-        var output = await RunGitAsync(repoPath, "rev-parse --abbrev-ref HEAD", ct);
+        var output = await RunGitAsync(repoPath, ct, "rev-parse", "--abbrev-ref", "HEAD");
         return output.Trim();
     }
 
     public async Task<string> CloneRepoAsync(string repoUrl, string targetPath, CancellationToken ct = default)
     {
         Directory.CreateDirectory(targetPath);
-        await RunGitAsync(targetPath, $"clone \"{repoUrl}\" .", ct);
+        await RunGitAsync(targetPath, ct, "clone", repoUrl, ".");
         _logger.LogInformation("Cloned {Repo} to {Path}", repoUrl, targetPath);
         return targetPath;
     }
 
     public async Task<GitStatusResult> GetStatusAsync(string workingDir, CancellationToken ct = default)
     {
-        var output = await RunGitAsync(workingDir, "status --porcelain", ct);
+        var output = await RunGitAsync(workingDir, ct, "status", "--porcelain");
         var staged = new List<string>();
         var modified = new List<string>();
         var untracked = new List<string>();
@@ -118,17 +118,17 @@ public class GitWorktreeService : IGitWorktreeService
         string diffText, statLine;
         if (hasHead)
         {
-            diffText = await RunGitAsync(workingDir, "diff HEAD", ct);
-            statLine = await RunGitAsync(workingDir, "diff HEAD --shortstat", ct);
+            diffText = await RunGitAsync(workingDir, ct, "diff", "HEAD");
+            statLine = await RunGitAsync(workingDir, ct, "diff", "HEAD", "--shortstat");
         }
         else
         {
             // Stage everything so we can diff the index against nothing
-            await RunGitAsync(workingDir, "add -A", ct);
-            diffText = await RunGitAsync(workingDir, "diff --cached", ct);
-            statLine = await RunGitAsync(workingDir, "diff --cached --shortstat", ct);
+            await RunGitAsync(workingDir, ct, "add", "-A");
+            diffText = await RunGitAsync(workingDir, ct, "diff", "--cached");
+            statLine = await RunGitAsync(workingDir, ct, "diff", "--cached", "--shortstat");
             // Unstage so we don't leave side effects
-            await RunGitAsync(workingDir, "reset", ct);
+            await RunGitAsync(workingDir, ct, "reset");
         }
 
         int files = 0, insertions = 0, deletions = 0;
@@ -157,13 +157,15 @@ public class GitWorktreeService : IGitWorktreeService
 
     public async Task StageAllAsync(string workingDir, CancellationToken ct = default)
     {
-        await RunGitAsync(workingDir, "add -A", ct);
+        await RunGitAsync(workingDir, ct, "add", "-A");
     }
 
     public async Task<string> CommitAsync(string workingDir, string message, CancellationToken ct = default)
     {
         await StageAllAsync(workingDir, ct);
-        var output = await RunGitAsync(workingDir, $"commit -m \"{message.Replace("\"", "\\\"")}\"", ct);
+        // The message goes through as a single argument — quotes, newlines, backticks and
+        // shell metacharacters in it are inert.
+        var output = await RunGitAsync(workingDir, ct, "commit", "-m", message);
         _logger.LogInformation("Committed in {Dir}: {Message}", workingDir, message);
         return output.Trim();
     }
@@ -171,7 +173,7 @@ public class GitWorktreeService : IGitWorktreeService
     public async Task PushAsync(string workingDir, string? remoteBranch = null, CancellationToken ct = default)
     {
         var branch = remoteBranch ?? await GetCurrentBranchAsync(workingDir, ct);
-        await RunGitAsync(workingDir, $"push -u origin {branch}", ct);
+        await RunGitAsync(workingDir, ct, "push", "-u", "origin", branch);
         _logger.LogInformation("Pushed {Branch} to origin from {Dir}", branch, workingDir);
     }
 
@@ -179,7 +181,7 @@ public class GitWorktreeService : IGitWorktreeService
     {
         try
         {
-            var output = await RunGitAsync(workingDir, "remote get-url origin", ct);
+            var output = await RunGitAsync(workingDir, ct, "remote", "get-url", "origin");
             return output.Trim();
         }
         catch
@@ -191,7 +193,7 @@ public class GitWorktreeService : IGitWorktreeService
     public async Task<string> InitRepoAsync(string path, CancellationToken ct = default)
     {
         Directory.CreateDirectory(path);
-        await RunGitAsync(path, "init", ct);
+        await RunGitAsync(path, ct, "init");
         _logger.LogInformation("Initialized git repo at {Path}", path);
         return path;
     }
@@ -200,7 +202,7 @@ public class GitWorktreeService : IGitWorktreeService
     {
         try
         {
-            await RunGitAsync(workingDir, "rev-parse HEAD", ct);
+            await RunGitAsync(workingDir, ct, "rev-parse", "HEAD");
             return true;
         }
         catch
@@ -209,30 +211,46 @@ public class GitWorktreeService : IGitWorktreeService
         }
     }
 
-    private async Task<string> RunGitAsync(string workingDir, string arguments, CancellationToken ct)
+    /// <summary>
+    /// Runs git with each argument passed separately via <see cref="ProcessStartInfo.ArgumentList"/>.
+    /// Arguments are never concatenated into a command string, so branch names, paths, and
+    /// commit messages cannot break out of their argument slot regardless of content.
+    /// </summary>
+    private async Task<string> RunGitAsync(string workingDir, params string[] args) =>
+        await RunGitAsync(workingDir, CancellationToken.None, args);
+
+    private async Task<string> RunGitAsync(string workingDir, CancellationToken ct, params string[] args)
     {
-        var process = new Process
+        var psi = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = arguments,
-                WorkingDirectory = workingDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            }
+            FileName = "git",
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
         };
 
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
+
+        using var process = new Process { StartInfo = psi };
         process.Start();
-        var output = await process.StandardOutput.ReadToEndAsync(ct);
-        var error = await process.StandardError.ReadToEndAsync(ct);
+
+        // Both pipes must be drained concurrently. Reading stdout to completion first
+        // deadlocks whenever git fills the stderr buffer before finishing stdout —
+        // reachable with a large `diff HEAD`.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+        var stderrTask = process.StandardError.ReadToEndAsync(ct);
+        await Task.WhenAll(stdoutTask, stderrTask);
         await process.WaitForExitAsync(ct);
+
+        var output = await stdoutTask;
+        var error = await stderrTask;
 
         if (process.ExitCode != 0)
         {
-            _logger.LogError("Git command failed: git {Args}\n{Error}", arguments, error);
+            _logger.LogError("Git command failed: git {Args}\n{Error}", string.Join(' ', args), error);
             throw new InvalidOperationException($"Git command failed: {error}");
         }
 

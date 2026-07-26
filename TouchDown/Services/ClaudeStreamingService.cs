@@ -119,6 +119,12 @@ public class ClaudeStreamingService : IClaudeStreamingService
             if (chunk.CostUsd.HasValue)
                 cost = chunk.CostUsd;
 
+            if (chunk.DurationMs.HasValue)
+                duration = chunk.DurationMs;
+
+            if (chunk.NumTurns.HasValue)
+                turns = chunk.NumTurns;
+
             if (chunk.IsError)
                 isError = true;
 
@@ -252,7 +258,9 @@ public class ClaudeStreamingService : IClaudeStreamingService
                 IsComplete = true,
                 IsError = evt.IsError ?? false,
                 Result = evt.Result,
-                CostUsd = evt.CostUsd
+                CostUsd = evt.ResolvedCostUsd,
+                DurationMs = evt.DurationMs,
+                NumTurns = evt.NumTurns
             },
 
             // Ignore system, message_start, message_delta, content_block_start (text), content_block_stop, etc.
