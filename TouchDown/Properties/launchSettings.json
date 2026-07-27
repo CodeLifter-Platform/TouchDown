@@ -1,35 +1,33 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
-    "profiles": {
-      "http": {
-        "commandName": "Project",
-        "dotnetRunMessages": true,
-        "launchBrowser": true,
-        "applicationUrl": "http://localhost:5139",
-        "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development",
-          "PATH": "/Users/a/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        }
-      },
-      "https": {
-        "commandName": "Project",
-        "dotnetRunMessages": true,
-        "launchBrowser": true,
-        "applicationUrl": "https://localhost:7184;http://localhost:5139",
-        "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development",
-          "PATH": "/Users/a/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        }
-      },
-      "Docker Compose": {
-        "commandName": "Executable",
-        "executablePath": "docker",
-        "commandLineArgs": "compose -f docker-compose.debug.yml up --build",
-        "launchBrowser": true,
-        "launchUrl": "http://localhost:8080",
-        "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
-        }
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5139",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7184;http://localhost:5139",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Docker Compose": {
+      "commandName": "Executable",
+      "executablePath": "docker",
+      "commandLineArgs": "compose -f docker-compose.debug.yml up --build",
+      "launchBrowser": true,
+      "launchUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     }
   }
+}

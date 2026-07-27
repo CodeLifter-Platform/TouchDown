@@ -56,23 +56,36 @@ public class AgentTeam
         _ => role.ToString()
     };
 
+    /// <summary>
+    /// Builds the built-in team from <see cref="PlaybookSeed"/> — the same rows EF seeds into
+    /// the database, so this factory and the persisted team can never disagree.
+    /// </summary>
     public static AgentTeam CreateThePlaybook() => new()
     {
-        Name = "The Playbook",
-        Description = "The default TD agent team. The Quarterback calls plays, the Scout researches the web, the Offensive Line implements and the Defensive Line tests/validates (both fanning out into parallel instances), Safety reviews, Special Teams handles DevOps.",
+        Id = PlaybookSeed.TeamId,
+        Name = PlaybookSeed.TeamName,
+        Description = PlaybookSeed.TeamDescription,
         IsDefault = true,
-        Members =
-        [
-            new() { Name = "The Quarterback", Role = AgentRole.Leader, Model = ClaudeModel.Opus, SystemPrompt = AgentDefaults.QuarterbackSystemPrompt },
-            new() { Name = "The Scout", Role = AgentRole.Researcher, Model = ClaudeModel.Sonnet, SystemPrompt = AgentDefaults.ScoutSystemPrompt },
-            new() { Name = "The Offensive Line", Role = AgentRole.Worker, Model = ClaudeModel.Sonnet, MaxInstances = 4, SystemPrompt = AgentDefaults.OffensiveLineSystemPrompt },
-            new() { Name = "The Defensive Line", Role = AgentRole.Tester, Model = ClaudeModel.Sonnet, MaxInstances = 4, SystemPrompt = AgentDefaults.DefensiveLineSystemPrompt },
-            new() { Name = "The Safety", Role = AgentRole.Validator, Model = ClaudeModel.Sonnet, SystemPrompt = "You are the Safety — the code reviewer. You review all output from the Offensive Line and the Defensive Line before it merges. Check for bugs, security issues, code quality, test coverage, and adherence to the plan." },
-            new() { Name = "Special Teams", Role = AgentRole.DevOps, Model = ClaudeModel.Haiku, SystemPrompt = "You are Special Teams — handling CI/CD, infrastructure, and build pipeline work. You activate when the play involves DevOps tasks." },
-        ],
+        Members = PlaybookSeed.Members.Select(m => new AgentMember
+        {
+            Id = m.Id,
+            Name = m.Name,
+            Role = m.Role,
+            Model = m.Model,
+            Effort = m.Effort,
+            MaxInstances = m.MaxInstances,
+            SystemPrompt = m.SystemPrompt,
+            AgentTeamId = PlaybookSeed.TeamId,
+        }).ToList(),
         CommunicationRules =
         [
-            new() { Style = CommStyle.LeaderGated, Description = "Quarterback reads the task, huddles with the user, then snaps. The Scout researches when needed. The Offensive Line and the Defensive Line each run multiple instances in parallel. Safety reviews before merge." }
+            new()
+            {
+                Id = PlaybookSeed.CommunicationRuleId,
+                Style = PlaybookSeed.CommunicationStyle,
+                Description = PlaybookSeed.CommunicationRuleDescription,
+                AgentTeamId = PlaybookSeed.TeamId,
+            }
         ]
     };
 }

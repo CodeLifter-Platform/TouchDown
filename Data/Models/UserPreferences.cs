@@ -22,5 +22,14 @@ public class UserPreferences
     /// Defaults to "1.0" so new installs start fresh.
     /// </summary>
     public string ConsentVersion { get; set; } = "1.0";
+
+    // ── Appearance ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// Name of the selected theme from the theme registry. Null means the registry default.
+    /// </summary>
+    public string? ThemeName { get; set; }
+
+    /// <summary>Whether dark mode is active. Defaults to true, matching the previous behaviour.</summary>
+    public bool DarkMode { get; set; } = true;
 }
 

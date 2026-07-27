@@ -1,9 +1,15 @@
 @page "/settings"
 @using TD.Components.Settings
+@rendermode InteractiveServer
 
-<MudText Typo="Typo.h4" GutterBottom="true" Class="mb-6">Settings</MudText>
+<PageTitle>TD - Settings</PageTitle>
 
-<MudStack Spacing="4">
-    <TelemetrySettings />
-</MudStack>
+<MudContainer MaxWidth="MaxWidth.Medium">
+    <MudText Typo="Typo.h4" GutterBottom="true" Class="mb-6">Settings</MudText>
 
+    <MudStack Spacing="4">
+        <AppearanceSettings />
+        <AgentToolingSettings />
+        <TelemetrySettings />
+    </MudStack>
+</MudContainer>

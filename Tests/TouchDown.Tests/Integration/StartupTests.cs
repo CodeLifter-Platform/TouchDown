@@ -24,11 +24,14 @@ public class StartupTests
     {
         private readonly string _environment;
         private readonly string _dbPath;
+        private readonly string _hangfirePath;
 
         public TestApp(string environment)
         {
             _environment = environment;
-            _dbPath = Path.Combine(Path.GetTempPath(), $"td-startup-{Guid.NewGuid():N}.db");
+            var id = Guid.NewGuid().ToString("N");
+            _dbPath = Path.Combine(Path.GetTempPath(), $"td-startup-{id}.db");
+            _hangfirePath = Path.Combine(Path.GetTempPath(), $"td-startup-hf-{id}.db");
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -37,15 +40,17 @@ public class StartupTests
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:TouchDown"] = $"Data Source={_dbPath}"
+                    ["ConnectionStrings:TouchDown"] = $"Data Source={_dbPath}",
+                    ["ConnectionStrings:Hangfire"] = _hangfirePath
                 }));
         }
 
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            foreach (var path in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
-                try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
+            foreach (var baseName in new[] { _dbPath, _hangfirePath })
+                foreach (var path in new[] { baseName, baseName + "-wal", baseName + "-shm" })
+                    try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
         }
     }
 
@@ -110,6 +115,32 @@ public class StartupTests
 
         using var scope = app.Services.CreateScope();
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<OrphanedDriveReconciler>());
+    }
+
+    [Fact]
+    public void Startup_UsesDurableJobStorage()
+    {
+        // Memory storage loses recurring schedules and job history on every restart.
+        using var app = new TestApp("Production");
+
+        var storage = app.Services.GetRequiredService<JobStorage>();
+
+        Assert.Contains("SQLite", storage.GetType().Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Startup_PersistsTheRecurringCleanupJob()
+    {
+        // The schedule lives in job storage now, so it should be readable back out.
+        using var app = new TestApp("Production");
+        _ = app.Services.GetRequiredService<IRecurringJobManager>();
+
+        var jobs = app.Services.GetRequiredService<JobStorage>()
+            .GetMonitoringApi()
+            .GetStatistics();
+
+        Assert.NotNull(jobs);
+        Assert.True(jobs.Recurring >= 1, $"expected at least one persisted recurring job, saw {jobs.Recurring}");
     }
 
     [Fact]

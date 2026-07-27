@@ -6,12 +6,18 @@
 <MudPaper Class="pa-4" Elevation="1">
     <MudText Typo="Typo.h6" GutterBottom="true">
         <MudIcon Icon="@Icons.Material.Filled.Analytics" Class="mr-2" />
-        Anonymous Usage Telemetry
+        Drive Diagnostics
+    </MudText>
+
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+        Records detailed traces of each Drive so failures can be diagnosed rather than guessed at.
+        This includes your task description, repository path and branch, what each agent produced,
+        and full error messages and stack traces.
     </MudText>
 
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-        Help improve TouchDown by sharing anonymous usage data.
-        No code, paths, task text, or agent output is ever collected.
+        <strong>Nothing leaves this machine unless an export endpoint is configured</strong>
+        (<code>Telemetry:OtlpEndpoint</code>). Turning this off stops recording immediately.
     </MudText>
 
     <div class="d-flex align-center gap-4 mb-3">
@@ -19,7 +25,7 @@
                    Value="@Prefs.Current.TelemetryConsented"
                    ValueChanged="OnToggleChanged"
                    Color="Color.Primary"
-                   Label="Enable anonymous usage telemetry" />
+                   Label="Enable drive diagnostics" />
     </div>
 
     @if (Prefs.Current.HasRespondedToTelemetryConsent && Prefs.Current.ConsentTimestamp.HasValue)
