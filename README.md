@@ -61,6 +61,16 @@ Dispatching the pipeline from a non-main ref builds versioned artifacts
 `chore: release <version> [skip ci]`, tags `v<version>`, and publishes the GitHub
 Release with generated notes.
 
+## Downloads
+
+| Platform | Formats | Get it |
+|---|---|---|
+| **Container** | `Dockerfile` + `docker-compose.yml` | [build from source](#running) |
+| **Any .NET 10 host** | `dotnet run` / published output | [Releases](https://github.com/CodeLifter-Platform/TouchDown/releases) |
+
+> TouchDown is a server application — there is nothing to install on a desktop. Run it in a
+> container or on a .NET host; see `..Documentation/OnboardDocker.md`.
+
 ## Release history
 
 | Version | Date | Linux (x64) | Notes |
