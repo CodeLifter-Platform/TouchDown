@@ -175,3 +175,28 @@ jobs:
           generate_release_notes: true
           files: |
             dist/**/*.zip
+
+  # ── Release notes ─────────────────────────────────────────────────
+  # Pushes the pull requests this release shipped to codelifter.net, which
+  # curates them and posts the note into TouchDown's Release Notes thread in
+  # the forum. No RELEASE_NOTES_TOKEN means a warning, never a failed release.
+  #
+  # NOTE: this repo is still on the retired BASE_VERSION + run-number scheme
+  # with RELEASE_LEVEL unset, so EVERY merge into main publishes a full
+  # release, and the site's default policy posts a forum note for each one.
+  # Until it moves to the tag-based scheme (Platform-Standards/process/
+  # versioning-ci.md), park it with:
+  #   npm run release-tokens -- policy touchdown manual
+  #
+  # This repo's version job predates build_sha, so the notes workflow checks
+  # out the tag the release job just pushed and measures back from there.
+  # Spec: Platform-Standards/process/release-notes.md
+  release-notes:
+    needs: [version, release]
+    if: ${{ needs.version.outputs.is_release == 'true' }}
+    uses: ./.github/workflows/release-notes.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      tag: ${{ needs.version.outputs.version_tag }}
+      prerelease: ${{ needs.version.outputs.is_prerelease == 'true' }}
+    secrets: inherit
