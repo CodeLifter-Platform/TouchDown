@@ -53,20 +53,7 @@ public class ClaudeStreamingService : IClaudeStreamingService
             if (line == null) break; // EOF
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            ClaudeStreamEvent? evt;
-            try
-            {
-                evt = JsonSerializer.Deserialize<ClaudeStreamEvent>(line, JsonOptions);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning("Failed to parse stream-json line: {Error}\nLine: {Line}", ex.Message, line);
-                continue;
-            }
-
-            if (evt == null) continue;
-
-            var chunk = MapEventToChunk(evt);
+            var chunk = ParseLine(line, _logger);
             if (chunk != null)
                 yield return chunk;
         }
@@ -228,7 +215,28 @@ public class ClaudeStreamingService : IClaudeStreamingService
         return result.FullText;
     }
 
-    private static ClaudeStreamChunk? MapEventToChunk(ClaudeStreamEvent evt)
+    /// <summary>
+    /// One line of <c>--output-format stream-json</c> to at most one chunk. A line that is not
+    /// JSON is logged and skipped rather than ending the stream: the CLI prints the odd
+    /// diagnostic to stdout and one bad line must not lose the rest of the run.
+    /// </summary>
+    internal static ClaudeStreamChunk? ParseLine(string line, ILogger logger)
+    {
+        ClaudeStreamEvent? evt;
+        try
+        {
+            evt = JsonSerializer.Deserialize<ClaudeStreamEvent>(line, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Failed to parse stream-json line: {Error}\nLine: {Line}", ex.Message, line);
+            return null;
+        }
+
+        return evt == null ? null : MapEventToChunk(evt);
+    }
+
+    internal static ClaudeStreamChunk? MapEventToChunk(ClaudeStreamEvent evt)
     {
         // With --include-partial-messages the real event is nested inside a
         // "stream_event" envelope. Unwrap so the cases below match as before.
@@ -268,7 +276,7 @@ public class ClaudeStreamingService : IClaudeStreamingService
         };
     }
 
-    private Process CreateProcess(ClaudeRunOptions options)
+    internal static Process CreateProcess(ClaudeRunOptions options)
     {
         var args = new List<string>
         {
