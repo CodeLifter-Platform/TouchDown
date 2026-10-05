@@ -15,12 +15,14 @@ namespace TouchDown.Tests.TestSupport;
 /// </summary>
 public sealed class TestDb : IDisposable, IDbContextFactory<TDDbContext>
 {
-    private readonly SqliteConnection _connection;
+    private readonly SqliteConnection? _connection;
+    private readonly string? _filePath;
     private readonly DbContextOptions<TDDbContext> _options;
 
-    private TestDb(SqliteConnection connection, DbContextOptions<TDDbContext> options)
+    private TestDb(SqliteConnection? connection, string? filePath, DbContextOptions<TDDbContext> options)
     {
         _connection = connection;
+        _filePath = filePath;
         _options = options;
     }
 
@@ -37,8 +39,29 @@ public sealed class TestDb : IDisposable, IDbContextFactory<TDDbContext>
             .UseSqlite(connection)
             .Options;
 
-        var db = new TestDb(connection, options);
+        return Initialize(new TestDb(connection, null, options), seed);
+    }
 
+    /// <summary>
+    /// A throwaway database file, so every context opens its own connection exactly as the
+    /// app's contexts do. Use this for code that writes from several tasks at once (the
+    /// orchestrator runs plays in parallel); a single shared in-memory connection is not
+    /// safe for that and would turn concurrency into spurious "database is locked" errors.
+    /// </summary>
+    public static TestDb CreateOnDisk(bool seed = true)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "td-tests", $"{Guid.NewGuid():N}.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        var options = new DbContextOptionsBuilder<TDDbContext>()
+            .UseSqlite($"Data Source={path}")
+            .Options;
+
+        return Initialize(new TestDb(null, path, options), seed);
+    }
+
+    private static TestDb Initialize(TestDb db, bool seed)
+    {
         using var ctx = db.CreateDbContext();
         // EnsureCreated applies the model (including HasData seeding) without needing
         // the migration history; the migrations themselves are verified separately.
@@ -60,6 +83,11 @@ public sealed class TestDb : IDisposable, IDbContextFactory<TDDbContext>
 
     public void Dispose()
     {
-        _connection.Dispose();
+        _connection?.Dispose();
+
+        if (_filePath is null) return;
+        SqliteConnection.ClearAllPools();
+        foreach (var path in new[] { _filePath, _filePath + "-wal", _filePath + "-shm" })
+            try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
     }
 }
