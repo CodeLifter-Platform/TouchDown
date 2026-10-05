@@ -35,8 +35,12 @@ builder.Services.AddMudServices(config =>
     config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
 });
 
-// SignalR
-builder.Services.AddSignalR();
+// SignalR. The orchestrator publishes anonymous objects and the monitor page reads them
+// back by property name ("AgentName", "Status", "Phase"...). The default hub protocol
+// camel-cases names on the wire, which made every one of those lookups miss; keeping the
+// server's names is the contract AgentHubWireContractTests pins.
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options => options.PayloadSerializerOptions.PropertyNamingPolicy = null);
 
 // EF Core with IDbContextFactory pattern.
 // The connection string comes from configuration so a deployment can point the DB at a
