@@ -6,6 +6,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["TouchDown/TouchDown.csproj", "TouchDown/"]
 COPY ["Data/Data.csproj", "Data/"]
+COPY ["Themes/Themes.csproj", "Themes/"]
 RUN dotnet restore "TouchDown/TouchDown.csproj"
 COPY . .
 WORKDIR "/src/TouchDown"

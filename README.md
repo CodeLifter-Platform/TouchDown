@@ -19,12 +19,17 @@ so the data lives on the mounted volume.
 ## Tests
 
 ```sh
-dotnet test TouchDown.sln
+dotnet build TouchDown.sln -c Release
+dotnet test tests/TouchDown.Tests -c Release --no-build
 ```
 
-`Tests/TouchDown.Tests` covers the orchestration scheduler, plan parsing, provider/effort
-resolution, the git wrapper (against real repositories in temp directories), the data
-access layer and migrations (against real SQLite), and application startup.
+`tests/TouchDown.Tests` covers the orchestrator (a full drive end to end through the hosted
+app with a fake model provider, plus every failure path), the SignalR wire contract between
+the orchestrator and the monitor page, plan parsing and the CLI stream parsers, the data
+access layer and migrations (against real SQLite, including the upgrade of a legacy
+EnsureCreated database), the view models' user-facing rules, the startup guards, and
+application startup. CI runs it with coverage printed into the job summary and then builds
+and smoke-tests the container image. See `CLAUDE.md` → Testing for the row-by-row map.
 
 Startup is covered twice on purpose. `StartupTests` boots the app in-process via
 `WebApplicationFactory`, which is enough for DI wiring and migrations. `ProcessStartupTests`

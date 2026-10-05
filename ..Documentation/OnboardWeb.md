@@ -8,8 +8,8 @@ Running TouchDown directly on a machine with the .NET SDK, without a container.
 |---|---|---|
 | .NET SDK | 10.x | `dotnet --version` |
 
-Note this repo has **no `global.json`**, so the SDK version is not pinned — whatever .NET 10
-SDK you have will be used. That is a gap, not a design choice.
+`global.json` pins the SDK to 10.0.100 with `rollForward: latestFeature`, so any 10.0.x SDK
+from that feature band up will do.
 
 ## Get the code, build, run
 
@@ -25,8 +25,13 @@ The SQLite database is created on first run.
 ## Test
 
 ```bash
-dotnet test
+dotnet build TouchDown.sln -c Release
+dotnet test tests/TouchDown.Tests -c Release --no-build
 ```
+
+The git-backed tests shell out to `git commit`, so `git config user.email` / `user.name`
+must be set. What the suite covers, and what it deliberately does not, is in `CLAUDE.md`
+under Testing.
 
 ## Gotchas
 

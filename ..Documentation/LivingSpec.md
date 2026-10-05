@@ -58,9 +58,9 @@ means where you host it.
 
 ## Known gaps
 
-- **No `global.json`, `Directory.Build.props`, or `Directory.Packages.props`.** This repo
-  is one of those the conformance checker flags for missing .NET pins, so the SDK version
-  and package versions are not centrally controlled. Tracked in
+- **No `Directory.Build.props` or `Directory.Packages.props`.** `global.json` pins the SDK
+  (10.0.100, `rollForward: latestFeature`), but package versions are not centrally
+  controlled, which the conformance checker flags. Tracked in
   `Platform-Standards/FOLLOWUPS.md`.
 - **Data Protection keys.** If this app grows authentication, the keys need persisting to
   the mounted volume the way StageZero does it — otherwise every container restart

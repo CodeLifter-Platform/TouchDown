@@ -38,3 +38,44 @@ docker compose up --build
 - **Web app, but both themes are required.** The dark-only exception in the harness is
   recorded for CodeLifter.Net alone; TouchDown ships a deliberate light palette and a
   persisted runtime toggle like every other app.
+- **No authentication, by design.** TouchDown is a single-user app on a trusted host. Every
+  page and the SignalR hub are open to anything that can reach the port, including the
+  hub's client-callable `SendLog` / `UpdateAgentStatus` / `DriveCompleted` methods, which
+  let any connected client write to another viewer's board. That is the recorded trusted-host
+  posture, not an oversight: do not expose the port beyond a network you trust, and do not
+  add per-route auth piecemeal. The one closed surface is the Hangfire dashboard (off outside
+  Development, loopback-only wherever it is on), because it can trigger and delete jobs.
+
+## Testing
+
+Run the suite locally (about a minute; git must have `user.email` / `user.name` set):
+
+```bash
+dotnet build TouchDown.sln -c Release
+dotnet test tests/TouchDown.Tests -c Release --no-build
+```
+
+How the rows of `Platform-Standards/process/testing.md` map onto `tests/TouchDown.Tests`:
+
+| Row | Where |
+|---|---|
+| Persistence | `PersistenceRoundTripTests` (every field of every entity, upsert, cascades), `DrivesNewServiceDATests`, `TeamsCrudTests`, `DataAccessTests`, `MigrationTests` (chain applies, model matches snapshot), `DatabaseMigratorTests` (a legacy EnsureCreated database upgrades in place) |
+| Wire contracts | `AgentHubWireContractTests`: the real hub hosted in-process, every message the orchestrator publishes read back by a real client with the property names the monitor page uses. The hub is the only wire contract; there is no HTTP API client. |
+| Auth and trust boundaries | Mostly N/A: there is no credential to refuse (see the posture note above). The one closed route is covered by `HangfireDashboardHostedTests` (absent in Production, open to a local caller, refused for a remote one) and `HangfireDashboardFilterTests`. |
+| Parsers and importers | `ClaudeStreamParserTests` (stream-json), `CodexParserTests` (codex exec), `PlanParserServiceTests` / `PlanExtractionTests` / `PlanSourceTests` (the Quarterback's plan). The CLI fixtures are reconstructed from the parsed shapes, not captured transcripts; swap in a capture when one exists. |
+| User-facing rules | `TeamsIndexPageVMTests`, `DrivesNewPageVMTests`, `HuddleVMTests`, `TeamsCrudTests` |
+| Failure paths | `OrchestratorFailurePathTests` (every turnover reason, a failed play, cancellation), `TeamsIndexPageVMTests` (a dead service keeps the editor and the edits), `DrivesNewServiceTests` (a provider error reaches the screen), `TelemetryServiceTests` |
+| Secrets | **N/A.** TouchDown holds no secrets of its own: no credentials, keys or tokens. The agent CLIs keep their own authentication outside the app, and nothing here reads or stores it. |
+| Startup guards | `TelemetryStartupGuardTests` (a bad `Telemetry:OtlpEndpoint` refuses to start, naming the setting), `UserPreferencesServiceTests` (a corrupt preferences file never blocks a launch), `StartupTests`, `ProcessStartupTests` |
+| The integration canary | `DriveCanaryTests`: the shipped wiring in-process (New Drive service → orchestrator → plan parser → SQLite → SignalR client), with only the model CLI faked |
+
+Platforms: the app ships only as a Linux container (`PLATFORMS.md`), so `tests.yml` runs the
+suite on ubuntu with coverage printed into the job summary, then builds the image and
+smoke-tests it (start on a named volume, `GET /` is 200, `/health` is 200 or 503, restart,
+the database file survived). There are no macOS or Windows legs because nothing is packaged
+for those platforms.
+
+Known gaps, deliberately: the monitor page opens its SignalR connection while prerendering,
+so `/drive/{id}` cannot be rendered inside TestServer and is not GET-tested in-process; and
+the suite is one project rather than the per-layer layout the standard prefers, which is a
+follow-up.
