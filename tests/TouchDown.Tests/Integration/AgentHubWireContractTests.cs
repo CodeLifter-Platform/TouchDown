@@ -19,6 +19,7 @@ namespace TouchDown.Tests.Integration;
 /// stayed blank, and a finished drive was reported as a Turnover because the status read as
 /// "". The hub protocol now keeps the server's property names.
 /// </summary>
+[Collection(HostedAppCollection.Name)]
 public class AgentHubWireContractTests : IAsyncLifetime
 {
     private const string DriveId = "wire-drive-1";

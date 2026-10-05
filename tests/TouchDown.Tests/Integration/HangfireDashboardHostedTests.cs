@@ -12,6 +12,7 @@ namespace TouchDown.Tests.Integration;
 /// which can trigger and delete jobs: off by default outside Development, and loopback-only
 /// wherever it is on. These host the real app and check both halves of that.
 /// </summary>
+[Collection(HostedAppCollection.Name)]
 public class HangfireDashboardHostedTests
 {
     private static readonly Dictionary<string, string?> DashboardOn = new() { ["Hangfire:EnableDashboard"] = "true" };

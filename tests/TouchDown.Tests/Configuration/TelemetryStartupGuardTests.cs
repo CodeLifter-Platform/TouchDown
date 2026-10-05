@@ -13,6 +13,7 @@ namespace TouchDown.Tests.Configuration;
 /// must refuse to start the app with a message that names the setting, rather than start
 /// and silently export nowhere.
 /// </summary>
+[Collection(HostedAppCollection.Name)]
 public class TelemetryStartupGuardTests
 {
     private static IConfiguration Config(params (string Key, string? Value)[] settings) =>

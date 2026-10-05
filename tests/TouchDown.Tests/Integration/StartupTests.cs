@@ -15,6 +15,7 @@ namespace TouchDown.Tests.Integration;
 /// initialized — and the only thing that initialized it was the Development-only Hangfire
 /// dashboard. Every build passed and every unit test passed; nothing executed startup.
 /// </summary>
+[Collection(HostedAppCollection.Name)]
 public class StartupTests
 {
     [Theory]

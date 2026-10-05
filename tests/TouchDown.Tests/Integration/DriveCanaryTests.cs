@@ -20,6 +20,7 @@ namespace TouchDown.Tests.Integration;
 /// swapped in through DI, written to the real SQLite schema, and reported to a real SignalR
 /// client over the hosted hub. Only the model CLI is faked.
 /// </summary>
+[Collection(HostedAppCollection.Name)]
 public class DriveCanaryTests
 {
     private static readonly TimeSpan DriveTimeout = TimeSpan.FromSeconds(60);
