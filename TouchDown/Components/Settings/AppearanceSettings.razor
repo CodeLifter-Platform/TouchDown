@@ -34,10 +34,7 @@
 </MudPaper>
 
 @code {
-    private string SelectedTheme =>
-        !string.IsNullOrWhiteSpace(Prefs.Current.ThemeName) && ThemeRegistry.All.ContainsKey(Prefs.Current.ThemeName!)
-            ? Prefs.Current.ThemeName!
-            : "TouchDown";
+    private string SelectedTheme => ThemeRegistry.ResolveName(Prefs.Current.ThemeName);
 
     private async Task OnThemeChanged(string name)
     {
