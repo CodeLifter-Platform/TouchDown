@@ -48,15 +48,16 @@ public class MigrationTests
     }
 
     [Fact]
-    public async Task ModelSnapshotMatchesMigrations()
+    public void The_model_has_no_changes_the_migrations_do_not_know_about()
     {
-        // A model change without a matching migration would leave pending changes here.
+        // A model edit without `dotnet ef migrations add` would ship a schema the migrations
+        // never create. GetPendingMigrations cannot see this (it compares the history table to
+        // the migration list, not the model), so ask EF to diff the model against the snapshot.
         using var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        await using var ctx = new TDDbContext(OptionsFor(connection));
-        await ctx.Database.MigrateAsync();
+        using var ctx = new TDDbContext(OptionsFor(connection));
 
-        Assert.Empty(await ctx.Database.GetPendingMigrationsAsync());
+        Assert.False(ctx.Database.HasPendingModelChanges(),
+            "The model differs from the last migration snapshot; add a migration.");
     }
 
     [Fact]

@@ -110,45 +110,12 @@ builder.Services.AddTransient<OrphanedDriveReconciler>();
 
 var app = builder.Build();
 
-// Apply pending migrations (handles legacy EnsureCreated DBs)
+// Apply pending migrations (handles legacy EnsureCreated DBs; see DatabaseMigrator)
 using (var scope = app.Services.CreateScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<TDDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
-
-    // If the DB has tables but no migration history (EnsureCreated legacy),
-    // seed the history so EF skips InitialCreate and only runs newer migrations.
-    var conn = db.Database.GetDbConnection();
-    await conn.OpenAsync();
-
-    await using (var cmd = conn.CreateCommand())
-    {
-        // Check if tables exist but InitialCreate hasn't been recorded
-        cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AgentTeams';";
-        var tablesExist = Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
-
-        if (tablesExist)
-        {
-            // Ensure history table exists
-            cmd.CommandText = """
-                CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
-                    "MigrationId" TEXT NOT NULL PRIMARY KEY,
-                    "ProductVersion" TEXT NOT NULL
-                );
-                """;
-            await cmd.ExecuteNonQueryAsync();
-
-            // Mark InitialCreate as applied if not already
-            cmd.CommandText = """
-                INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-                VALUES ('20260323205938_InitialCreate', '10.0.5');
-                """;
-            await cmd.ExecuteNonQueryAsync();
-        }
-    }
-
-    await conn.CloseAsync();
-    await db.Database.MigrateAsync();
+    await DatabaseMigrator.MigrateAsync(db);
 }
 
 // Close out drives orphaned by a previous process — execution is in-memory, so anything

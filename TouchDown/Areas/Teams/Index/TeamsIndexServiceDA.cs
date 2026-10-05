@@ -274,6 +274,14 @@ public class TeamsIndexServiceDA : ITeamsIndexServiceDA
                         "A team needs a leader. Add another leader before removing this one.");
             }
 
+            // Plays record which member ran them. Deleting that member would either orphan
+            // the drive history or, as the schema stands, fail at the database with a
+            // message nobody can act on. Refuse up front and say why.
+            var playCount = await db.Plays.CountAsync(p => p.AssignedMemberId == memberId);
+            if (playCount > 0)
+                throw new TeamsIndexServiceDAException(
+                    $"'{member.Name}' has run {playCount} play(s) and cannot be removed while that drive history exists.");
+
             db.AgentMembers.Remove(member);
             await db.SaveChangesAsync();
         }
