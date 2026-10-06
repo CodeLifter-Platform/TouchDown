@@ -184,7 +184,7 @@ public partial class HuddleVM : VM, IHuddleVM
     private string Speaker(HuddleMessage m) => m.Name ?? RoleLabel(m.Role);
 
     /// <summary>Heuristic: does a typed Head-Coach message ask the whole team to report?</summary>
-    private static bool LooksLikeRollCall(string text)
+    internal static bool LooksLikeRollCall(string text)
     {
         var t = text.ToLowerInvariant();
         if (t.Contains("roll call") || t.Contains("rollcall") || t.Contains("sound off")) return true;

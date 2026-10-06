@@ -5,7 +5,9 @@ namespace TouchDown.Tests.Services;
 
 /// <summary>
 /// Appearance used to be component-local state in MainLayout, so a reload discarded it.
-/// It is now part of the persisted preferences.
+/// It is now part of the persisted preferences, and MainLayout and the Settings page both
+/// resolve a stored name through <see cref="ThemeRegistry.Resolve"/>, which is what these
+/// exercise (an earlier version of this file mirrored the lookup instead).
 /// </summary>
 public class UserPreferencesTests
 {
@@ -76,9 +78,14 @@ public class UserPreferencesTests
         Assert.Null(restored.ThemeName);
     }
 
-    /// <summary>Mirrors how MainLayout and AppearanceSettings resolve a stored theme name.</summary>
-    private static MudBlazor.MudTheme ResolveTheme(string? name) =>
-        !string.IsNullOrWhiteSpace(name) && ThemeRegistry.All.TryGetValue(name, out var theme)
-            ? theme
-            : ThemeRegistry.Default;
+    [Fact]
+    public void The_selector_shows_the_default_name_for_an_unknown_or_unset_theme()
+    {
+        Assert.Equal(ThemeRegistry.DefaultName, ThemeRegistry.ResolveName(null));
+        Assert.Equal(ThemeRegistry.DefaultName, ThemeRegistry.ResolveName("  "));
+        Assert.Equal(ThemeRegistry.DefaultName, ThemeRegistry.ResolveName("A Theme That Was Removed"));
+        Assert.Equal("Frost", ThemeRegistry.ResolveName("Frost"));
+    }
+
+    private static MudBlazor.MudTheme ResolveTheme(string? name) => ThemeRegistry.Resolve(name);
 }

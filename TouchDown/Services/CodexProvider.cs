@@ -123,7 +123,7 @@ public class CodexProvider : IAgentProvider
     /// Each stdout line is either a JSON event (structured) or plain text.
     /// We try JSON first; anything that doesn't parse becomes a text delta.
     /// </summary>
-    private AgentStreamChunk? ParseLine(string line)
+    internal static AgentStreamChunk? ParseLine(string line)
     {
         try
         {
@@ -153,7 +153,7 @@ public class CodexProvider : IAgentProvider
         }
     }
 
-    private Process BuildProcess(AgentContext ctx)
+    internal static Process BuildProcess(AgentContext ctx)
     {
         var psi = new ProcessStartInfo
         {

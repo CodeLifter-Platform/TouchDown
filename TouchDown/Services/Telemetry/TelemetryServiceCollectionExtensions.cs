@@ -29,9 +29,12 @@ public static class TelemetryServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(endpoint))
             return services;
 
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri))
+        // Uri.TryCreate accepts a rooted path ("/collector") as an absolute file URI on
+        // Unix, so the scheme has to be checked as well or a typo exports to a file path.
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri)
+            || (endpointUri.Scheme != Uri.UriSchemeHttp && endpointUri.Scheme != Uri.UriSchemeHttps))
             throw new InvalidOperationException(
-                $"Telemetry:OtlpEndpoint is not a valid absolute URI: '{endpoint}'");
+                $"Telemetry:OtlpEndpoint must be an absolute http or https URI; got '{endpoint}'");
 
         services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(

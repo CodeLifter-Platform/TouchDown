@@ -74,16 +74,25 @@ jobs:
             echo "Release: ${IS_RELEASE} · Prerelease: ${IS_PRERELEASE}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── Build gates the release pipeline (no test project yet) ─────
-  # (PR gating happens in tests.yml; this re-runs before any dispatch build)
+  # ── Tests gate the release pipeline ─────────────────────────────
+  # (PR gating with coverage and the container smoke test happens in tests.yml; this
+  # re-runs the suite before any dispatch build so a release never ships untested.)
   test:
     runs-on: ubuntu-latest  # linux minutes are the cheapest tier
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
+
+      # The git-backed tests shell out to `git commit`, which needs an identity.
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@touchdown.local"
+          git config --global user.name "TouchDown CI"
+
       - run: dotnet build TouchDown.sln -c Release
+      - run: dotnet test tests/TouchDown.Tests -c Release --no-build --verbosity normal
 
   # ── Linux server artifact (self-contained publish zip) ─────────
   build-linux:
@@ -98,7 +107,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Publish (self-contained, linux-x64)
         run: dotnet publish TouchDown/TouchDown.csproj -c Release -r linux-x64 --self-contained -p:Version="$APP_VERSION" -o publish

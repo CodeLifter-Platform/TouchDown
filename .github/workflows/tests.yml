@@ -1,7 +1,14 @@
 name: Tests
 
-# PR gate: build and test the solution on a linux runner. No publishing, no releases —
-# those live in build.yml behind workflow_dispatch.
+# PR gate, two jobs on cheap linux runners:
+#   test       builds the solution, runs the suite with coverage, and prints the coverage
+#              summary into the job summary (Platform-Standards/process/testing.md).
+#   container  builds the image this app ships as, starts it on a named volume, checks the
+#              home and health routes, restarts it and confirms the database survived.
+# No publishing, no releases: those live in build.yml behind workflow_dispatch.
+#
+# TouchDown ships only as a Linux container (PLATFORMS.md), so there are no macOS or
+# Windows legs: nothing is packaged for those platforms, so nothing needs testing there.
 
 on:
   pull_request:
@@ -19,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       # The git-backed tests shell out to `git commit`, which needs an identity.
       - name: Configure git identity for tests
@@ -28,4 +35,66 @@ jobs:
           git config --global user.name "TouchDown CI"
 
       - run: dotnet build TouchDown.sln -c Release
-      - run: dotnet test TouchDown.sln -c Release --no-build --verbosity normal
+
+      - name: Test with coverage
+        run: >
+          dotnet test tests/TouchDown.Tests -c Release --no-build --verbosity normal
+          --collect:"XPlat Code Coverage" --results-directory coverage/TouchDown.Tests
+
+      - name: Coverage summary
+        if: always()
+        run: python3 .github/scripts/coverage-summary.py coverage | tee -a "$GITHUB_STEP_SUMMARY"
+
+  container:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: touchdown:ci
+      VOLUME: td-ci-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t "$IMAGE" .
+
+      - name: Start on a named volume
+        run: |
+          docker volume create "$VOLUME"
+          docker run -d --name td1 -p 8080:8080 -v "$VOLUME":/app/data \
+            -e ASPNETCORE_ENVIRONMENT=Production "$IMAGE"
+
+      - name: The home page answers
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ || true)
+            if [ "$code" = "200" ]; then echo "GET / -> 200 after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "GET / never returned 200 (last: $code)"
+          docker logs td1
+          exit 1
+
+      - name: The health route answers
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)
+          echo "GET /health -> $code"
+          # 503 is expected here: the image carries no agent CLIs, so the checks report unhealthy.
+          [ "$code" = "200" ] || [ "$code" = "503" ]
+
+      - name: Restart onto the same volume and confirm the database survived
+        run: |
+          docker stop td1
+          docker rm td1
+          docker run -d --name td2 -p 8080:8080 -v "$VOLUME":/app/data \
+            -e ASPNETCORE_ENVIRONMENT=Production "$IMAGE"
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/ || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          if [ "$code" != "200" ]; then docker logs td2; exit 1; fi
+          docker exec td2 ls -la /app/data
+          docker exec td2 test -f /app/data/touchdown.db
+
+      - name: Container logs
+        if: failure()
+        run: docker logs td2 2>/dev/null || docker logs td1 2>/dev/null || true

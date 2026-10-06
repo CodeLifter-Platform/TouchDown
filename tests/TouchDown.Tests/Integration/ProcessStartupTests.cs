@@ -50,7 +50,9 @@ public class ProcessStartupTests
         var dll = AppDllPath();
         Assert.True(dll is not null, "The app binary was not found; expected it beside the test build output.");
 
-        var dbPath = Path.Combine(Path.GetTempPath(), $"td-proc-{Guid.NewGuid():N}.db");
+        var id = Guid.NewGuid().ToString("N");
+        var dbPath = Path.Combine(Path.GetTempPath(), $"td-proc-{id}.db");
+        var hangfirePath = Path.Combine(Path.GetTempPath(), $"td-proc-hf-{id}.db");
         var psi = new ProcessStartInfo
         {
             FileName = "dotnet",
@@ -64,6 +66,7 @@ public class ProcessStartupTests
         psi.Environment["ASPNETCORE_ENVIRONMENT"] = environment;
         psi.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{FreePort()}";
         psi.Environment["ConnectionStrings__TouchDown"] = $"Data Source={dbPath}";
+        psi.Environment["ConnectionStrings__Hangfire"] = hangfirePath;
 
         using var process = Process.Start(psi)!;
         var stdout = process.StandardOutput.ReadToEndAsync();
@@ -85,8 +88,9 @@ public class ProcessStartupTests
         finally
         {
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-            foreach (var path in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
-                try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
+            foreach (var baseName in new[] { dbPath, hangfirePath })
+                foreach (var path in new[] { baseName, baseName + "-wal", baseName + "-shm" })
+                    try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
         }
     }
 

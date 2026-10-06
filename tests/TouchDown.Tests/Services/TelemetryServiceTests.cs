@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TD.Models;
 using TD.Services;
 using TD.Services.Telemetry;
+using TouchDown.Tests.TestSupport;
 
 namespace TouchDown.Tests.Services;
 
@@ -258,17 +259,5 @@ public class TelemetryServiceTests : IDisposable
         Assert.NotNull(telemetry.StartDriveScope("d1"));
         Assert.NotNull(telemetry.StartPlayScope("p"));
         Assert.NotNull(telemetry.StartAgentScope("a"));
-    }
-
-    private sealed class StubPreferences : IUserPreferencesService
-    {
-        public UserPreferences Current { get; set; } = new();
-        public Task SaveAsync(CancellationToken ct = default) => Task.CompletedTask;
-    }
-
-    private sealed class ThrowingPreferences : IUserPreferencesService
-    {
-        public UserPreferences Current => throw new InvalidOperationException("preferences unavailable");
-        public Task SaveAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 }

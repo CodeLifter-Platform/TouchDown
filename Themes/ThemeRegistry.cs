@@ -16,4 +16,18 @@ public static class ThemeRegistry
     };
 
     public static MudTheme Default => TouchDownTheme.Theme;
+
+    /// <summary>The default theme's registry name.</summary>
+    public const string DefaultName = "TouchDown";
+
+    /// <summary>
+    /// The theme a stored name refers to. Null, blank, and unknown names (a preferences file
+    /// written by a newer build, say) all resolve to the default rather than failing.
+    /// </summary>
+    public static MudTheme Resolve(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && All.TryGetValue(name, out var theme) ? theme : Default;
+
+    /// <summary>The registry name a stored name resolves to, for selectors.</summary>
+    public static string ResolveName(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && All.ContainsKey(name) ? name : DefaultName;
 }

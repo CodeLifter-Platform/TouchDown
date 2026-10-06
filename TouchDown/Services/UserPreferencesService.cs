@@ -23,18 +23,39 @@ public class UserPreferencesService : IUserPreferencesService
     public UserPreferences Current { get; private set; } = new();
 
     public UserPreferencesService(ILogger<UserPreferencesService> logger)
+        : this(logger, DefaultFilePath())
+    {
+    }
+
+    /// <summary>
+    /// Loads from (and saves to) the given file. The app always uses the default location;
+    /// this exists so tests can exercise the real file I/O against a temp path.
+    /// </summary>
+    internal UserPreferencesService(ILogger<UserPreferencesService> logger, string filePath)
     {
         _logger = logger;
+        _filePath = filePath;
 
-        var configDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".config", "touchdown");
-
-        Directory.CreateDirectory(configDir);
-        _filePath = Path.Combine(configDir, "preferences.json");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        }
+        catch (Exception ex)
+        {
+            // A preferences directory that cannot be created must not stop the app launching.
+            _logger.LogWarning(ex, "Could not create the preferences directory for {Path}", filePath);
+        }
 
         Load();
     }
+
+    /// <summary><c>~/.config/touchdown/preferences.json</c>.</summary>
+    internal static string DefaultFilePath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".config", "touchdown", "preferences.json");
+
+    /// <summary>Where this instance reads and writes.</summary>
+    internal string FilePath => _filePath;
 
     public async Task SaveAsync(CancellationToken ct = default)
     {

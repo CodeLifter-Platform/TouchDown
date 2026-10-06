@@ -309,7 +309,17 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
             // Phase 3: Execute plays respecting dependencies
             await SendPhaseChanged(drive.DriveId, "Executing Plays", ct);
-            await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, provider, instanceLabels, ct);
+            try
+            {
+                await ExecutePlaysWithDependencies(drive, plays, plan, team, workDir, provider, instanceLabels, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A play that failed (an error result, or a provider that crashed) used to
+                // be reported as an Unknown turnover, indistinguishable from a bug here.
+                turnoverReason = TurnoverReason.PlayFailed;
+                throw;
+            }
 
             // Phase 4: Mark Touchdown
             await MarkDriveStatus(drive, DriveStatus.Touchdown, ct);
@@ -792,12 +802,28 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     private async Task SavePlays(int driveId, List<Play> plays, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        // Each play points at a member of the team that already exists in the database.
+        // Adding the play with that navigation set would mark the member (and through it the
+        // whole team) as new rows and fail on their primary keys, turning every drive over
+        // before its first play. Only the play itself is new; the member travels as its key.
+        var members = plays.ToDictionary(p => p, p => p.AssignedMember);
         foreach (var play in plays)
         {
             play.DriveId = driveId;
+            play.AssignedMember = null;
             db.Plays.Add(play);
         }
-        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            foreach (var play in plays)
+                play.AssignedMember = members[play];
+        }
     }
 
     private async Task SavePlayStatus(Play play, CancellationToken ct)
